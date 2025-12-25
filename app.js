@@ -49,27 +49,31 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============= AUTHENTICATION =============
 
 async function initAuth() {
-    // Controlla se l'utente è già loggato
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session) {
-        handleAuthSuccess(session.user);
-    }
-
-    // Listener per cambiamenti di autenticazione
-    supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) {
+    try {
+        // Controlla se l'utente è già loggato
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        
+        if (session) {
             handleAuthSuccess(session.user);
-        } else if (event === 'SIGNED_OUT') {
-            handleSignOut();
         }
-    });
+
+        // Listener per cambiamenti di autenticazione
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                handleAuthSuccess(session.user);
+            } else if (event === 'SIGNED_OUT') {
+                handleSignOut();
+            }
+        });
+    } catch (error) {
+        console.error('Errore inizializzazione auth:', error);
+    }
 }
 
 async function handleGoogleLogin() {
     try {
         showLoading();
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: window.location.origin
@@ -79,7 +83,7 @@ async function handleGoogleLogin() {
         if (error) throw error;
     } catch (error) {
         console.error('Errore login:', error);
-        alert('Errore durante il login. Riprova.');
+        alert('Errore durante il login: ' + error.message);
         hideLoading();
     }
 }
@@ -91,10 +95,10 @@ async function handleAuthSuccess(user) {
     loginSection.style.display = 'none';
     appSection.style.display = 'block';
     
-    if (user.user_metadata.avatar_url) {
+    if (user.user_metadata && user.user_metadata.avatar_url) {
         userAvatar.src = user.user_metadata.avatar_url;
     }
-    userName.textContent = user.user_metadata.full_name || user.email;
+    userName.textContent = (user.user_metadata && user.user_metadata.full_name) || user.email;
 
     // Carica i dati
     await loadCategories();
@@ -104,13 +108,18 @@ async function handleAuthSuccess(user) {
 }
 
 async function handleSignOut() {
-    await supabase.auth.signOut();
-    currentUser = null;
-    categories = [];
-    products = [];
-    
-    loginSection.style.display = 'block';
-    appSection.style.display = 'none';
+    try {
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        categories = [];
+        products = [];
+        
+        loginSection.style.display = 'block';
+        appSection.style.display = 'none';
+    } catch (error) {
+        console.error('Errore logout:', error);
+        alert('Errore durante il logout');
+    }
 }
 
 // ============= EVENT LISTENERS =============
@@ -156,7 +165,7 @@ function switchTab(tabName) {
 async function loadCategories() {
     try {
         showLoading();
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('categories')
             .select('*')
             .order('name');
@@ -169,7 +178,7 @@ async function loadCategories() {
         hideLoading();
     } catch (error) {
         console.error('Errore caricamento categorie:', error);
-        alert('Errore nel caricamento delle categorie');
+        alert('Errore nel caricamento delle categorie: ' + error.message);
         hideLoading();
     }
 }
@@ -222,7 +231,7 @@ async function handleAddCategory(e) {
 
     try {
         showLoading();
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('categories')
             .insert([{ 
                 user_id: currentUser.id,
@@ -245,7 +254,7 @@ async function handleAddCategory(e) {
         }
     } catch (error) {
         console.error('Errore creazione categoria:', error);
-        alert('Errore nella creazione della categoria');
+        alert('Errore nella creazione della categoria: ' + error.message);
         hideLoading();
     }
 }
@@ -255,7 +264,7 @@ async function deleteCategory(categoryId) {
 
     try {
         showLoading();
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('categories')
             .delete()
             .eq('id', categoryId);
@@ -269,7 +278,7 @@ async function deleteCategory(categoryId) {
         hideLoading();
     } catch (error) {
         console.error('Errore eliminazione categoria:', error);
-        alert('Errore nell\'eliminazione della categoria');
+        alert('Errore nell\'eliminazione della categoria: ' + error.message);
         hideLoading();
     }
 }
@@ -291,7 +300,7 @@ async function loadProducts() {
         showLoading();
         
         // Carica prodotti con le loro categorie
-        const { data: productsData, error: productsError } = await supabase
+        const { data: productsData, error: productsError } = await supabaseClient
             .from('products')
             .select(`
                 *,
@@ -304,7 +313,7 @@ async function loadProducts() {
         // Carica l'inventario per ogni prodotto
         const productsWithInventory = await Promise.all(
             (productsData || []).map(async (product) => {
-                const { data: inventoryData, error: inventoryError } = await supabase
+                const { data: inventoryData, error: inventoryError } = await supabaseClient
                     .from('inventory')
                     .select('*')
                     .eq('product_id', product.id);
@@ -323,7 +332,7 @@ async function loadProducts() {
         hideLoading();
     } catch (error) {
         console.error('Errore caricamento prodotti:', error);
-        alert('Errore nel caricamento dei prodotti');
+        alert('Errore nel caricamento dei prodotti: ' + error.message);
         hideLoading();
     }
 }
@@ -415,7 +424,7 @@ async function handleAddProduct(e) {
         showLoading();
 
         // Inserisci il prodotto
-        const { data: productData, error: productError } = await supabase
+        const { data: productData, error: productError } = await supabaseClient
             .from('products')
             .insert([{
                 user_id: currentUser.id,
@@ -428,7 +437,7 @@ async function handleAddProduct(e) {
         if (productError) throw productError;
 
         // Inserisci l'inventario
-        const { error: inventoryError } = await supabase
+        const { error: inventoryError } = await supabaseClient
             .from('inventory')
             .insert([{
                 product_id: productData[0].id,
@@ -447,7 +456,7 @@ async function handleAddProduct(e) {
         alert('Prodotto aggiunto con successo!');
     } catch (error) {
         console.error('Errore aggiunta prodotto:', error);
-        alert('Errore nell\'aggiunta del prodotto');
+        alert('Errore nell\'aggiunta del prodotto: ' + error.message);
         hideLoading();
     }
 }
@@ -457,7 +466,7 @@ async function deleteProduct(productId) {
 
     try {
         showLoading();
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('products')
             .delete()
             .eq('id', productId);
@@ -468,7 +477,7 @@ async function deleteProduct(productId) {
         hideLoading();
     } catch (error) {
         console.error('Errore eliminazione prodotto:', error);
-        alert('Errore nell\'eliminazione del prodotto');
+        alert('Errore nell\'eliminazione del prodotto: ' + error.message);
         hideLoading();
     }
 }
@@ -527,7 +536,7 @@ async function fetchProductFromEAN() {
         fetchEanBtn.textContent = 'Cerca';
     } catch (error) {
         console.error('Errore ricerca EAN:', error);
-        alert('Errore nella ricerca del prodotto');
+        alert('Errore nella ricerca del prodotto: ' + error.message);
         hideLoading();
         fetchEanBtn.disabled = false;
         fetchEanBtn.textContent = 'Cerca';
