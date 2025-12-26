@@ -3,6 +3,7 @@
 // State Management
 let currentUser = null;
 let categories = [];
+let locations = [];
 let products = [];
 
 // DOM Elements
@@ -40,6 +41,16 @@ const categoriesList = document.getElementById('categories-list');
 const categoryFilter = document.getElementById('category-filter');
 const searchInput = document.getElementById('search-input');
 
+// Location Elements
+const locationForm = document.getElementById('location-form');
+const locationModal = document.getElementById('location-modal');
+const addLocationBtn = document.getElementById('add-location-btn');
+const quickAddLocationBtn = document.getElementById('quick-add-location');
+const closeLocationModalBtn = document.querySelector('.close-location');
+const locationsList = document.getElementById('locations-list');
+const locationFilter = document.getElementById('location-filter');
+const productLocationSelect = document.getElementById('product-location');
+
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
     initAuth();
@@ -52,7 +63,7 @@ async function initAuth() {
     try {
         // Controlla se l'utente è già loggato
         const { data: { session } } = await supabaseClient.auth.getSession();
-        
+
         if (session) {
             handleAuthSuccess(session.user);
         }
@@ -90,20 +101,22 @@ async function handleGoogleLogin() {
 
 async function handleAuthSuccess(user) {
     currentUser = user;
-    
+
     // Aggiorna UI
     loginSection.style.display = 'none';
     appSection.style.display = 'block';
-    
+
     if (user.user_metadata && user.user_metadata.avatar_url) {
         userAvatar.src = user.user_metadata.avatar_url;
     }
     userName.textContent = (user.user_metadata && user.user_metadata.full_name) || user.email;
 
     // Carica i dati
+    await loadLocations();
+    await initializeDefaultLocations();
     await loadCategories();
     await loadProducts();
-    
+
     hideLoading();
 }
 
@@ -113,7 +126,7 @@ async function handleSignOut() {
         currentUser = null;
         categories = [];
         products = [];
-        
+
         loginSection.style.display = 'block';
         appSection.style.display = 'none';
     } catch (error) {
@@ -150,12 +163,22 @@ function setupEventListeners() {
     // Search & Filter
     searchInput.addEventListener('input', filterProducts);
     categoryFilter.addEventListener('change', filterProducts);
+    locationFilter.addEventListener('change', filterProducts);
+
+    // Location Management
+    addLocationBtn.addEventListener('click', () => openLocationModal());
+    quickAddLocationBtn.addEventListener('click', () => openLocationModal());
+    closeLocationModalBtn.addEventListener('click', () => closeLocationModal());
+    locationForm.addEventListener('submit', handleAddLocation);
+    window.addEventListener('click', (e) => {
+        if (e.target === locationModal) closeLocationModal();
+    });
 }
 
 function switchTab(tabName) {
     tabButtons.forEach(btn => btn.classList.remove('active'));
     tabContents.forEach(content => content.classList.remove('active'));
-    
+
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(`${tabName}-tab`).classList.add('active');
 }
@@ -204,7 +227,7 @@ function renderCategories() {
 }
 
 function updateCategorySelects() {
-    const options = categories.map(cat => 
+    const options = categories.map(cat =>
         `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`
     ).join('');
 
@@ -221,9 +244,9 @@ function updateCategorySelects() {
 
 async function handleAddCategory(e) {
     e.preventDefault();
-    
+
     const name = document.getElementById('category-name').value.trim();
-    
+
     if (!name) {
         alert('Inserisci un nome per la categoria');
         return;
@@ -233,9 +256,9 @@ async function handleAddCategory(e) {
         showLoading();
         const { data, error } = await supabaseClient
             .from('categories')
-            .insert([{ 
+            .insert([{
                 user_id: currentUser.id,
-                name: name 
+                name: name
             }])
             .select();
 
@@ -247,7 +270,7 @@ async function handleAddCategory(e) {
         closeCategoryModal();
         categoryForm.reset();
         hideLoading();
-        
+
         // Se stiamo aggiungendo dal form prodotto, selezioniamola
         if (productCategorySelect) {
             productCategorySelect.value = data[0].id;
@@ -293,12 +316,195 @@ function closeCategoryModal() {
     categoryForm.reset();
 }
 
+// ============= LOCATIONS =============
+
+async function initializeDefaultLocations() {
+    // Verifica se l'utente ha già delle locations
+    if (locations.length > 0) return;
+
+    const defaultLocations = [
+        { name: 'Frigorifero', icon: '🧊' },
+        { name: 'Dispensa', icon: '🥫' },
+        { name: 'Freezer', icon: '❄️' },
+        { name: 'Cantina', icon: '🍷' },
+        { name: 'Ripostiglio', icon: '🏺' }
+    ];
+
+    try {
+        for (const location of defaultLocations) {
+            const { error } = await supabaseClient
+                .from('locations')
+                .insert([{
+                    user_id: currentUser.id,
+                    name: location.name,
+                    icon: location.icon
+                }]);
+
+            if (error) throw error;
+        }
+
+        // Ricarica le locations dopo averle create
+        await loadLocations();
+    } catch (error) {
+        console.error('Errore creazione locations di default:', error);
+    }
+}
+
+async function loadLocations() {
+    try {
+        showLoading();
+        const { data, error } = await supabaseClient
+            .from('locations')
+            .select('*')
+            .order('name');
+
+        if (error) throw error;
+
+        locations = data || [];
+        renderLocations();
+        updateLocationSelects();
+        hideLoading();
+    } catch (error) {
+        console.error('Errore caricamento locations:', error);
+        alert('Errore nel caricamento delle locazioni: ' + error.message);
+        hideLoading();
+    }
+}
+
+function renderLocations() {
+    if (locations.length === 0) {
+        locationsList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📍</div>
+                <h3>Nessuna locazione</h3>
+                <p>Crea la tua prima locazione per organizzare i prodotti</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Calcola statistiche per ogni location
+    const locationStats = {};
+    products.forEach(product => {
+        product.inventory.forEach(item => {
+            if (item.location_id) {
+                locationStats[item.location_id] = (locationStats[item.location_id] || 0) + 1;
+            }
+        });
+    });
+
+    locationsList.innerHTML = locations.map(location => `
+        <div class="category-card">
+            <div style="display: flex; align-items: center;">
+                <span class="location-icon">${escapeHtml(location.icon)}</span>
+                <span class="category-name">${escapeHtml(location.name)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span class="location-stats">${locationStats[location.id] || 0} prodotti</span>
+                <button class="btn btn-danger" onclick="deleteLocation('${location.id}')">Elimina</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateLocationSelects() {
+    const options = locations.map(loc =>
+        `<option value="${loc.id}">${escapeHtml(loc.icon)} ${escapeHtml(loc.name)}</option>`
+    ).join('');
+
+    productLocationSelect.innerHTML = `
+        <option value="">Seleziona una locazione</option>
+        ${options}
+    `;
+
+    locationFilter.innerHTML = `
+        <option value="">Tutte le locazioni</option>
+        ${options}
+    `;
+}
+
+async function handleAddLocation(e) {
+    e.preventDefault();
+
+    const name = document.getElementById('location-name').value.trim();
+    const icon = document.getElementById('location-icon').value.trim();
+
+    if (!name || !icon) {
+        alert('Inserisci un nome e un\'icona per la locazione');
+        return;
+    }
+
+    try {
+        showLoading();
+        const { data, error } = await supabaseClient
+            .from('locations')
+            .insert([{
+                user_id: currentUser.id,
+                name: name,
+                icon: icon
+            }])
+            .select();
+
+        if (error) throw error;
+
+        locations.push(data[0]);
+        renderLocations();
+        updateLocationSelects();
+        closeLocationModal();
+        locationForm.reset();
+        hideLoading();
+
+        // Se stiamo aggiungendo dal form prodotto, selezioniamola
+        if (productLocationSelect) {
+            productLocationSelect.value = data[0].id;
+        }
+    } catch (error) {
+        console.error('Errore creazione locazione:', error);
+        alert('Errore nella creazione della locazione: ' + error.message);
+        hideLoading();
+    }
+}
+
+async function deleteLocation(locationId) {
+    if (!confirm('Sei sicuro di voler eliminare questa locazione?')) return;
+
+    try {
+        showLoading();
+        const { error } = await supabaseClient
+            .from('locations')
+            .delete()
+            .eq('id', locationId);
+
+        if (error) throw error;
+
+        locations = locations.filter(l => l.id !== locationId);
+        renderLocations();
+        updateLocationSelects();
+        await loadProducts(); // Ricarica i prodotti
+        hideLoading();
+    } catch (error) {
+        console.error('Errore eliminazione locazione:', error);
+        alert('Errore nell\'eliminazione della locazione: ' + error.message);
+        hideLoading();
+    }
+}
+
+function openLocationModal() {
+    locationModal.style.display = 'block';
+    document.getElementById('location-name').focus();
+}
+
+function closeLocationModal() {
+    locationModal.style.display = 'none';
+    locationForm.reset();
+}
+
 // ============= PRODUCTS =============
 
 async function loadProducts() {
     try {
         showLoading();
-        
+
         // Carica prodotti con le loro categorie
         const { data: productsData, error: productsError } = await supabaseClient
             .from('products')
@@ -315,7 +521,10 @@ async function loadProducts() {
             (productsData || []).map(async (product) => {
                 const { data: inventoryData, error: inventoryError } = await supabaseClient
                     .from('inventory')
-                    .select('*')
+                    .select(`
+                        *,
+                        location:locations(id, name, icon)
+                    `)
                     .eq('product_id', product.id);
 
                 if (inventoryError) throw inventoryError;
@@ -367,6 +576,13 @@ function renderProducts(filteredProducts = null) {
                 </div>
                 ${product.category ? `<span class="product-category">${escapeHtml(product.category.name)}</span>` : ''}
                 
+                <!-- Location badges -->
+                <div>
+                    ${product.inventory.map(item =>
+            item.location ? `<span class="product-location">${escapeHtml(item.location.icon)} ${escapeHtml(item.location.name)}</span>` : ''
+        ).filter(Boolean).join('')}
+                </div>
+                
                 <div class="product-info">
                     <div class="info-row">
                         <span>Quantità totale:</span>
@@ -394,13 +610,18 @@ function renderProducts(filteredProducts = null) {
 function filterProducts() {
     const searchTerm = searchInput.value.toLowerCase();
     const selectedCategory = categoryFilter.value;
+    const selectedLocation = locationFilter.value;
 
     const filtered = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchTerm) || 
-                            (product.ean && product.ean.includes(searchTerm));
+        const matchesSearch = product.name.toLowerCase().includes(searchTerm) ||
+            (product.ean && product.ean.includes(searchTerm));
         const matchesCategory = !selectedCategory || product.category_id === selectedCategory;
-        
-        return matchesSearch && matchesCategory;
+
+        // Controllo location a livello di inventory
+        const matchesLocation = !selectedLocation ||
+            product.inventory.some(item => item.location_id === selectedLocation);
+
+        return matchesSearch && matchesCategory && matchesLocation;
     });
 
     renderProducts(filtered);
@@ -412,10 +633,11 @@ async function handleAddProduct(e) {
     const ean = eanInput.value.trim();
     const name = productNameInput.value.trim();
     const categoryId = productCategorySelect.value;
+    const locationId = productLocationSelect.value;
     const quantity = parseInt(quantityInput.value);
     const expiryDate = expiryDateInput.value || null;
 
-    if (!name || !categoryId || !quantity) {
+    if (!name || !categoryId || !locationId || !quantity) {
         alert('Compila tutti i campi obbligatori');
         return;
     }
@@ -442,7 +664,8 @@ async function handleAddProduct(e) {
             .insert([{
                 product_id: productData[0].id,
                 quantity: quantity,
-                expiry_date: expiryDate
+                expiry_date: expiryDate,
+                location_id: locationId
             }]);
 
         if (inventoryError) throw inventoryError;
@@ -452,7 +675,7 @@ async function handleAddProduct(e) {
         await loadProducts();
         switchTab('products');
         hideLoading();
-        
+
         alert('Prodotto aggiunto con successo!');
     } catch (error) {
         console.error('Errore aggiunta prodotto:', error);
@@ -486,7 +709,7 @@ function viewProductDetails(productId) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
 
-    const inventoryDetails = product.inventory.map(item => 
+    const inventoryDetails = product.inventory.map(item =>
         `Quantità: ${item.quantity}${item.expiry_date ? `, Scadenza: ${formatDate(item.expiry_date)}` : ''}`
     ).join('\n');
 
@@ -504,7 +727,7 @@ ${inventoryDetails || 'Nessun inventario'}
 
 async function fetchProductFromEAN() {
     const ean = eanInput.value.trim();
-    
+
     if (!ean) {
         alert('Inserisci un codice EAN');
         return;
@@ -520,7 +743,7 @@ async function fetchProductFromEAN() {
 
         if (data.status === 1 && data.product) {
             const productName = data.product.product_name || data.product.product_name_it || '';
-            
+
             if (productName) {
                 productNameInput.value = productName;
                 alert(`Prodotto trovato: ${productName}`);
