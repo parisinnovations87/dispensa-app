@@ -506,3 +506,29 @@ body {
     background-color: #e6f4ea;
     color: var(--secondary-color);
 }
+
+/* Location Badge */
+.product-location {
+    display: inline-block;
+    background-color: #e8f4f8;
+    color: #1967d2;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 0.85em;
+    margin-bottom: 8px;
+    margin-left: 8px;
+}
+
+/* Location Icon in Cards */
+.location-icon {
+    font-size: 1.5em;
+    margin-right: 8px;
+}
+
+/* Location Stats */
+.location-stats {
+    font-size: 0.85em;
+    color: var(--text-light);
+    margin-left: auto;
+    margin-right: 12px;
+}
