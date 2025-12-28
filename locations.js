@@ -1,4 +1,4 @@
-// locations.js - Gestione locazioni
+// locations.js - Gestione locazioni (CORRETTO)
 
 import { getCurrentUser, getLocations, setLocations, getProducts } from './state.js';
 import { showLoading, hideLoading, escapeHtml } from './utils.js';
@@ -15,7 +15,6 @@ const closeLocationModalBtn = document.querySelector('.close-location');
 
 // Initialize
 export function initializeLocations() {
-    // Setup event listeners
     locationForm.addEventListener('submit', handleAddLocation);
     closeLocationModalBtn.addEventListener('click', () => closeLocationModal());
     setupModalCloseOnOutsideClick(locationModal);
@@ -23,7 +22,6 @@ export function initializeLocations() {
 
 // Initialize Default Locations
 export async function initializeDefaultLocations() {
-    // Verifica se l'utente ha già delle locations
     if (getLocations().length > 0) return;
 
     const defaultLocations = [
@@ -31,7 +29,7 @@ export async function initializeDefaultLocations() {
         { name: 'Dispensa', icon: '🥫' },
         { name: 'Freezer', icon: '❄️' },
         { name: 'Cantina', icon: '🍷' },
-        { name: 'Ripostiglio', icon: '🏺' }
+        { name: 'Ripostiglio', icon: '📦' }
     ];
 
     try {
@@ -47,7 +45,6 @@ export async function initializeDefaultLocations() {
             if (error) throw error;
         }
 
-        // Ricarica le locations dopo averle create
         await loadLocations();
     } catch (error) {
         console.error('Errore creazione locations di default:', error);
@@ -76,7 +73,7 @@ export async function loadLocations() {
     }
 }
 
-// Render Locations List
+// Render Locations List (CORRETTO IL CONTEGGIO)
 export function renderLocations() {
     const locations = getLocations();
 
@@ -91,26 +88,28 @@ export function renderLocations() {
         return;
     }
 
-    // Calcola statistiche per ogni location
+    // CORRETTO: Calcola statistiche per ogni location contando la quantità
     const locationStats = {};
     const products = getProducts();
+    
     products.forEach(product => {
         product.inventory.forEach(item => {
             if (item.location_id) {
-                locationStats[item.location_id] = (locationStats[item.location_id] || 0) + 1;
+                // Somma le QUANTITÀ, non solo il numero di entry
+                locationStats[item.location_id] = (locationStats[item.location_id] || 0) + item.quantity;
             }
         });
     });
 
     locationsList.innerHTML = locations.map(location => `
-        <div class="category-card">
-            <div style="display: flex; align-items: center;">
+        <div class="location-card">
+            <div class="location-header">
                 <span class="location-icon">${escapeHtml(location.icon)}</span>
-                <span class="category-name">${escapeHtml(location.name)}</span>
+                <span class="location-name">${escapeHtml(location.name)}</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <span class="location-stats">${locationStats[location.id] || 0} prodotti</span>
-                <button class="btn btn-danger" onclick="deleteLocation('${location.id}')">Elimina</button>
+            <div class="location-actions">
+                <span class="location-stats">${locationStats[location.id] || 0} pezzi</span>
+                <button class="btn btn-danger btn-small" onclick="deleteLocation('${location.id}')">Elimina</button>
             </div>
         </div>
     `).join('');
@@ -169,7 +168,6 @@ async function handleAddLocation(e) {
         locationForm.reset();
         hideLoading();
 
-        // Se stiamo aggiungendo dal form prodotto, selezioniamola
         if (productLocationSelect) {
             productLocationSelect.value = data[0].id;
         }
@@ -180,7 +178,7 @@ async function handleAddLocation(e) {
     }
 }
 
-// Delete Location (exposed globally for onclick)
+// Delete Location
 export async function deleteLocation(locationId) {
     if (!confirm('Sei sicuro di voler eliminare questa locazione?')) return;
 
@@ -198,7 +196,7 @@ export async function deleteLocation(locationId) {
 
         renderLocations();
         updateLocationSelects();
-        await loadProducts(); // Ricarica i prodotti
+        await loadProducts();
         hideLoading();
     } catch (error) {
         console.error('Errore eliminazione locazione:', error);
