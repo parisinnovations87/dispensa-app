@@ -83,7 +83,7 @@ export async function loadProducts() {
     }
 }
 
-// Render Products List
+// Render Products List - OGNI INVENTORY = UNA CARD
 export function renderProducts(filteredProducts = null) {
     const productsToRender = filteredProducts || getProducts();
 
@@ -98,48 +98,54 @@ export function renderProducts(filteredProducts = null) {
         return;
     }
 
-    productsList.innerHTML = productsToRender.map(product => {
-        const totalQuantity = product.inventory.reduce((sum, item) => sum + item.quantity, 0);
-        const earliestExpiry = product.inventory
-            .filter(item => item.expiry_date)
-            .sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date))[0];
+    // Espandi ogni prodotto in più card, una per ogni inventory
+    const expandedProducts = [];
+    productsToRender.forEach(product => {
+        product.inventory.forEach(inv => {
+            expandedProducts.push({
+                ...product,
+                singleInventory: inv
+            });
+        });
+    });
 
+    productsList.innerHTML = expandedProducts.map(item => {
+        const inv = item.singleInventory;
+        
         return `
             <div class="product-card">
                 <div class="product-header">
                     <div>
-                        <div class="product-name">${escapeHtml(product.name)}</div>
-                        ${product.ean ? `<div class="product-ean">EAN: ${product.ean}</div>` : ''}
+                        <div class="product-name">${escapeHtml(item.name)}</div>
+                        ${item.ean ? `<div class="product-ean">EAN: ${item.ean}</div>` : ''}
                     </div>
                 </div>
-                ${product.category ? `<span class="product-category">${escapeHtml(product.category.name)}</span>` : ''}
+                ${item.category ? `<span class="product-category">${escapeHtml(item.category.name)}</span>` : ''}
                 
                 <div>
-                    ${product.inventory.map(item =>
-            item.location ? `<span class="product-location">${escapeHtml(item.location.icon)} ${escapeHtml(item.location.name)}: ${item.quantity} pz</span>` : ''
-        ).filter(Boolean).join('')}
+                    ${inv.location ? `<span class="product-location">${escapeHtml(inv.location.icon)} ${escapeHtml(inv.location.name)}: ${inv.quantity} pz</span>` : ''}
                 </div>
                 
                 <div class="product-info">
                     <div class="info-row">
-                        <span>Quantità totale:</span>
-                        <strong>${totalQuantity}</strong>
+                        <span>Quantità:</span>
+                        <strong>${inv.quantity}</strong>
                     </div>
-                    ${earliestExpiry ? `
+                    ${inv.expiry_date ? `
                         <div class="info-row">
-                            <span>Prossima scadenza:</span>
-                            <span class="${getExpiryClass(earliestExpiry.expiry_date)}">
-                                ${formatDate(earliestExpiry.expiry_date)}
+                            <span>Scadenza:</span>
+                            <span class="${getExpiryClass(inv.expiry_date)}">
+                                ${formatDate(inv.expiry_date)}
                             </span>
                         </div>
                     ` : ''}
                 </div>
 
                 <div class="product-actions">
-                    <button class="btn btn-secondary btn-small" onclick="viewProductDetails('${product.id}')">Dettagli</button>
-                    <button class="btn btn-primary btn-small" onclick="editProduct('${product.id}')">Modifica</button>
-                    <button class="btn btn-info btn-small" onclick="moveProduct('${product.id}')">Sposta</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteProduct('${product.id}')">Elimina</button>
+                    <button class="btn btn-secondary btn-small" onclick="viewProductDetails('${item.id}')">Dettagli</button>
+                    <button class="btn btn-primary btn-small" onclick="editProduct('${item.id}')">Modifica</button>
+                    <button class="btn btn-info btn-small" onclick="moveProduct('${item.id}')">Sposta</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteProduct('${item.id}')">Elimina</button>
                 </div>
             </div>
         `;
