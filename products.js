@@ -1,8 +1,9 @@
-// products.js - Gestione prodotti con Modifica e Sposta
+// products.js - Gestione prodotti CORRETTA
 
 import { getCurrentUser, getProducts, setProducts, getLocations } from './state.js';
 import { showLoading, hideLoading, escapeHtml, formatDate, getExpiryClass } from './utils.js';
 import { switchTab } from './ui.js';
+import { renderLocations } from './locations.js';
 
 // DOM Elements
 const productsList = document.getElementById('products-list');
@@ -70,6 +71,10 @@ export async function loadProducts() {
 
         setProducts(productsWithInventory);
         renderProducts();
+        
+        // AGGIORNA ANCHE LE LOCAZIONI per il conteggio
+        renderLocations();
+        
         hideLoading();
     } catch (error) {
         console.error('Errore caricamento prodotti:', error);
@@ -253,38 +258,55 @@ async function handleAddProduct(e) {
     }
 }
 
-// NUOVA FUNZIONE: Edit Product
+// FUNZIONE MODIFICA: Mostra TUTTI gli inventory
 export function editProduct(productId) {
     const product = getProducts().find(p => p.id === productId);
     if (!product) return;
 
-    // Imposta modalità modifica
-    editingProductId = productId;
+    if (product.inventory.length === 0) {
+        alert('Questo prodotto non ha inventory associato');
+        return;
+    }
+
+    // Se ha più di un inventory, chiedi quale modificare
+    if (product.inventory.length > 1) {
+        const inventoryList = product.inventory.map((inv, idx) => 
+            `${idx + 1}. ${inv.location ? inv.location.icon + ' ' + inv.location.name : 'Senza locazione'}: ${inv.quantity} pz${inv.expiry_date ? ' (Scad: ' + formatDate(inv.expiry_date) + ')' : ''}`
+        ).join('\n');
+
+        const choice = prompt(`Questo prodotto ha più inventory:\n\n${inventoryList}\n\nQuale vuoi modificare? (Inserisci il numero)`);
+        
+        if (!choice || isNaN(choice) || choice < 1 || choice > product.inventory.length) {
+            return;
+        }
+
+        const selectedInv = product.inventory[parseInt(choice) - 1];
+        openEditForm(product, selectedInv);
+    } else {
+        // Un solo inventory
+        openEditForm(product, product.inventory[0]);
+    }
+}
+
+function openEditForm(product, inventory) {
+    editingProductId = product.id;
     document.querySelector('#add-tab h2').textContent = 'Modifica Prodotto';
 
-    // Compila il form
     eanInput.value = product.ean || '';
     productNameInput.value = product.name;
     productCategorySelect.value = product.category_id;
+    productLocationSelect.value = inventory.location_id;
+    quantityInput.value = inventory.quantity;
+    expiryDateInput.value = inventory.expiry_date || '';
 
-    // Prendi il primo inventory per i dati
-    if (product.inventory.length > 0) {
-        const firstInv = product.inventory[0];
-        productLocationSelect.value = firstInv.location_id;
-        quantityInput.value = firstInv.quantity;
-        expiryDateInput.value = firstInv.expiry_date || '';
-    }
-
-    // Passa al tab di aggiunta
     switchTab('add');
 }
 
-// NUOVA FUNZIONE: Move Product tra locazioni
+// FUNZIONE SPOSTA: Con validazione quantità e refresh immediato
 export function moveProduct(productId) {
     const product = getProducts().find(p => p.id === productId);
-    if (!product) return;
+    if (!product || product.inventory.length === 0) return;
 
-    // Crea modale dinamico
     const modalHTML = `
         <div id="move-modal" class="modal" style="display: block;">
             <div class="modal-content">
@@ -296,12 +318,12 @@ export function moveProduct(productId) {
                         <select id="move-from-location" required>
                             <option value="">Seleziona locazione di partenza</option>
                             ${product.inventory.map(inv => 
-                                inv.location ? `<option value="${inv.id}">${escapeHtml(inv.location.icon)} ${escapeHtml(inv.location.name)} (${inv.quantity} pz)</option>` : ''
+                                inv.location ? `<option value="${inv.id}" data-qty="${inv.quantity}">${escapeHtml(inv.location.icon)} ${escapeHtml(inv.location.name)} (${inv.quantity} pz disponibili)</option>` : ''
                             ).join('')}
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Quanti pezzi spostare?</label>
+                        <label>Quanti pezzi spostare? <span id="max-qty-label"></span></label>
                         <input type="number" id="move-quantity" min="1" required>
                     </div>
                     <div class="form-group">
@@ -321,50 +343,66 @@ export function moveProduct(productId) {
 
     document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-    // Event listener per il form
+    const fromSelect = document.getElementById('move-from-location');
+    const qtyInput = document.getElementById('move-quantity');
+    const maxQtyLabel = document.getElementById('max-qty-label');
+
+    // Aggiorna il max quando cambia la locazione di partenza
+    fromSelect.addEventListener('change', () => {
+        const selectedOption = fromSelect.options[fromSelect.selectedIndex];
+        const maxQty = selectedOption.dataset.qty;
+        if (maxQty) {
+            qtyInput.max = maxQty;
+            qtyInput.value = Math.min(qtyInput.value || 1, maxQty);
+            maxQtyLabel.textContent = `(Max: ${maxQty})`;
+        }
+    });
+
     document.getElementById('move-form').addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const fromInventoryId = document.getElementById('move-from-location').value;
-        const moveQty = parseInt(document.getElementById('move-quantity').value);
+        const fromInventoryId = fromSelect.value;
+        const moveQty = parseInt(qtyInput.value);
         const toLocationId = document.getElementById('move-to-location').value;
 
         const fromInventory = product.inventory.find(inv => inv.id === fromInventoryId);
 
+        // VALIDAZIONE QUANTITÀ
         if (!fromInventory || moveQty > fromInventory.quantity) {
-            alert('Quantità non valida!');
+            alert(`Quantità non valida! Hai solo ${fromInventory.quantity} pezzi disponibili.`);
+            return;
+        }
+
+        if (fromInventory.location_id === toLocationId) {
+            alert('Non puoi spostare nella stessa locazione!');
             return;
         }
 
         try {
             showLoading();
 
-            // Riduci quantità nella locazione di partenza
+            // 1. Riduci quantità nella locazione di partenza
             if (moveQty === fromInventory.quantity) {
-                // Elimina se sposti tutto
                 await supabaseClient
                     .from('inventory')
                     .delete()
                     .eq('id', fromInventoryId);
             } else {
-                // Aggiorna quantità
                 await supabaseClient
                     .from('inventory')
                     .update({ quantity: fromInventory.quantity - moveQty })
                     .eq('id', fromInventoryId);
             }
 
-            // Verifica se esiste già un inventory nella locazione di destinazione
+            // 2. Aggiungi/crea nella locazione di destinazione
             const existingInv = product.inventory.find(inv => inv.location_id === toLocationId);
 
             if (existingInv) {
-                // Aggiungi alla quantità esistente
                 await supabaseClient
                     .from('inventory')
                     .update({ quantity: existingInv.quantity + moveQty })
                     .eq('id', existingInv.id);
             } else {
-                // Crea nuovo inventory
                 await supabaseClient
                     .from('inventory')
                     .insert([{
@@ -375,6 +413,7 @@ export function moveProduct(productId) {
                     }]);
             }
 
+            // 3. RICARICA I DATI IMMEDIATAMENTE
             document.getElementById('move-modal').remove();
             await loadProducts();
             hideLoading();
