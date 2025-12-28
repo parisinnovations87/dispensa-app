@@ -1,9 +1,9 @@
-// app.js - Orchestratore principale dell'applicazione
+// app.js - Orchestratore principale (aggiornato)
 
 import { initAuth, handleGoogleLogin, handleSignOut } from './auth.js';
 import { initializeCategories, deleteCategory, openCategoryModal } from './categories.js';
 import { initializeLocations, deleteLocation, openLocationModal } from './locations.js';
-import { initializeProducts, deleteProduct, viewProductDetails } from './products.js';
+import { initializeProducts, deleteProduct, viewProductDetails, editProduct, moveProduct } from './products.js';
 import { initializeTabs } from './ui.js';
 
 // DOM Elements
@@ -19,6 +19,8 @@ window.deleteCategory = deleteCategory;
 window.deleteLocation = deleteLocation;
 window.deleteProduct = deleteProduct;
 window.viewProductDetails = viewProductDetails;
+window.editProduct = editProduct;
+window.moveProduct = moveProduct;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', async () => {
@@ -31,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Setup event listeners
     setupEventListeners();
 
-    // Initialize authentication (this will load data if user is logged in)
+    // Initialize authentication
     await initAuth();
 });
 
