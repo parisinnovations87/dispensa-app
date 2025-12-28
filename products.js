@@ -1,6 +1,6 @@
-// products.js - Gestione prodotti e inventario
+// products.js - Gestione prodotti con Modifica e Sposta
 
-import { getCurrentUser, getProducts, setProducts } from './state.js';
+import { getCurrentUser, getProducts, setProducts, getLocations } from './state.js';
 import { showLoading, hideLoading, escapeHtml, formatDate, getExpiryClass } from './utils.js';
 import { switchTab } from './ui.js';
 
@@ -18,9 +18,15 @@ const productLocationSelect = document.getElementById('product-location');
 const quantityInput = document.getElementById('quantity');
 const expiryDateInput = document.getElementById('expiry-date');
 
+// Variabile per gestire la modalità modifica
+let editingProductId = null;
+
+// Expose globally
+window.editProduct = editProduct;
+window.moveProduct = moveProduct;
+
 // Initialize
 export function initializeProducts() {
-    // Setup event listeners
     addProductForm.addEventListener('submit', handleAddProduct);
     fetchEanBtn.addEventListener('click', fetchProductFromEAN);
     searchInput.addEventListener('input', filterProducts);
@@ -33,7 +39,6 @@ export async function loadProducts() {
     try {
         showLoading();
 
-        // Carica prodotti con le loro categorie
         const { data: productsData, error: productsError } = await supabaseClient
             .from('products')
             .select(`
@@ -44,7 +49,6 @@ export async function loadProducts() {
 
         if (productsError) throw productsError;
 
-        // Carica l'inventario per ogni prodotto
         const productsWithInventory = await Promise.all(
             (productsData || []).map(async (product) => {
                 const { data: inventoryData, error: inventoryError } = await supabaseClient
@@ -105,10 +109,9 @@ export function renderProducts(filteredProducts = null) {
                 </div>
                 ${product.category ? `<span class="product-category">${escapeHtml(product.category.name)}</span>` : ''}
                 
-                <!-- Location badges -->
                 <div>
                     ${product.inventory.map(item =>
-            item.location ? `<span class="product-location">${escapeHtml(item.location.icon)} ${escapeHtml(item.location.name)}</span>` : ''
+            item.location ? `<span class="product-location">${escapeHtml(item.location.icon)} ${escapeHtml(item.location.name)}: ${item.quantity} pz</span>` : ''
         ).filter(Boolean).join('')}
                 </div>
                 
@@ -128,8 +131,10 @@ export function renderProducts(filteredProducts = null) {
                 </div>
 
                 <div class="product-actions">
-                    <button class="btn btn-secondary" onclick="viewProductDetails('${product.id}')">Dettagli</button>
-                    <button class="btn btn-danger" onclick="deleteProduct('${product.id}')">Elimina</button>
+                    <button class="btn btn-secondary btn-small" onclick="viewProductDetails('${product.id}')">Dettagli</button>
+                    <button class="btn btn-primary btn-small" onclick="editProduct('${product.id}')">Modifica</button>
+                    <button class="btn btn-info btn-small" onclick="moveProduct('${product.id}')">Sposta</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteProduct('${product.id}')">Elimina</button>
                 </div>
             </div>
         `;
@@ -146,8 +151,6 @@ export function filterProducts() {
         const matchesSearch = product.name.toLowerCase().includes(searchTerm) ||
             (product.ean && product.ean.includes(searchTerm));
         const matchesCategory = !selectedCategory || product.category_id === selectedCategory;
-
-        // Controllo location a livello di inventory
         const matchesLocation = !selectedLocation ||
             product.inventory.some(item => item.location_id === selectedLocation);
 
@@ -157,7 +160,7 @@ export function filterProducts() {
     renderProducts(filtered);
 }
 
-// Add New Product
+// Add/Update Product
 async function handleAddProduct(e) {
     e.preventDefault();
 
@@ -176,46 +179,215 @@ async function handleAddProduct(e) {
     try {
         showLoading();
 
-        // Inserisci il prodotto
-        const { data: productData, error: productError } = await supabaseClient
-            .from('products')
-            .insert([{
-                user_id: getCurrentUser().id,
-                ean: ean || null,
-                name: name,
-                category_id: categoryId
-            }])
-            .select();
+        if (editingProductId) {
+            // MODIFICA PRODOTTO ESISTENTE
+            const { error: productError } = await supabaseClient
+                .from('products')
+                .update({
+                    ean: ean || null,
+                    name: name,
+                    category_id: categoryId
+                })
+                .eq('id', editingProductId);
 
-        if (productError) throw productError;
+            if (productError) throw productError;
 
-        // Inserisci l'inventario
-        const { error: inventoryError } = await supabaseClient
-            .from('inventory')
-            .insert([{
-                product_id: productData[0].id,
-                quantity: quantity,
-                expiry_date: expiryDate,
-                location_id: locationId
-            }]);
+            // Aggiorna inventory (elimina vecchi e crea nuovo)
+            const { error: deleteError } = await supabaseClient
+                .from('inventory')
+                .delete()
+                .eq('product_id', editingProductId);
 
-        if (inventoryError) throw inventoryError;
+            if (deleteError) throw deleteError;
 
-        // Reset form e ricarica
+            const { error: inventoryError } = await supabaseClient
+                .from('inventory')
+                .insert([{
+                    product_id: editingProductId,
+                    quantity: quantity,
+                    expiry_date: expiryDate,
+                    location_id: locationId
+                }]);
+
+            if (inventoryError) throw inventoryError;
+
+            editingProductId = null;
+            document.querySelector('#add-tab h2').textContent = 'Aggiungi Nuovo Prodotto';
+            alert('Prodotto modificato con successo!');
+        } else {
+            // NUOVO PRODOTTO
+            const { data: productData, error: productError } = await supabaseClient
+                .from('products')
+                .insert([{
+                    user_id: getCurrentUser().id,
+                    ean: ean || null,
+                    name: name,
+                    category_id: categoryId
+                }])
+                .select();
+
+            if (productError) throw productError;
+
+            const { error: inventoryError } = await supabaseClient
+                .from('inventory')
+                .insert([{
+                    product_id: productData[0].id,
+                    quantity: quantity,
+                    expiry_date: expiryDate,
+                    location_id: locationId
+                }]);
+
+            if (inventoryError) throw inventoryError;
+
+            alert('Prodotto aggiunto con successo!');
+        }
+
         addProductForm.reset();
         await loadProducts();
         switchTab('products');
         hideLoading();
-
-        alert('Prodotto aggiunto con successo!');
     } catch (error) {
-        console.error('Errore aggiunta prodotto:', error);
-        alert('Errore nell\'aggiunta del prodotto: ' + error.message);
+        console.error('Errore salvataggio prodotto:', error);
+        alert('Errore nel salvataggio del prodotto: ' + error.message);
         hideLoading();
     }
 }
 
-// Delete Product (exposed globally for onclick)
+// NUOVA FUNZIONE: Edit Product
+export function editProduct(productId) {
+    const product = getProducts().find(p => p.id === productId);
+    if (!product) return;
+
+    // Imposta modalità modifica
+    editingProductId = productId;
+    document.querySelector('#add-tab h2').textContent = 'Modifica Prodotto';
+
+    // Compila il form
+    eanInput.value = product.ean || '';
+    productNameInput.value = product.name;
+    productCategorySelect.value = product.category_id;
+
+    // Prendi il primo inventory per i dati
+    if (product.inventory.length > 0) {
+        const firstInv = product.inventory[0];
+        productLocationSelect.value = firstInv.location_id;
+        quantityInput.value = firstInv.quantity;
+        expiryDateInput.value = firstInv.expiry_date || '';
+    }
+
+    // Passa al tab di aggiunta
+    switchTab('add');
+}
+
+// NUOVA FUNZIONE: Move Product tra locazioni
+export function moveProduct(productId) {
+    const product = getProducts().find(p => p.id === productId);
+    if (!product) return;
+
+    // Crea modale dinamico
+    const modalHTML = `
+        <div id="move-modal" class="modal" style="display: block;">
+            <div class="modal-content">
+                <span class="close" onclick="document.getElementById('move-modal').remove()">&times;</span>
+                <h2>Sposta: ${escapeHtml(product.name)}</h2>
+                <form id="move-form">
+                    <div class="form-group">
+                        <label>Da quale locazione?</label>
+                        <select id="move-from-location" required>
+                            <option value="">Seleziona locazione di partenza</option>
+                            ${product.inventory.map(inv => 
+                                inv.location ? `<option value="${inv.id}">${escapeHtml(inv.location.icon)} ${escapeHtml(inv.location.name)} (${inv.quantity} pz)</option>` : ''
+                            ).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quanti pezzi spostare?</label>
+                        <input type="number" id="move-quantity" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Verso quale locazione?</label>
+                        <select id="move-to-location" required>
+                            <option value="">Seleziona locazione di destinazione</option>
+                            ${getLocations().map(loc => 
+                                `<option value="${loc.id}">${escapeHtml(loc.icon)} ${escapeHtml(loc.name)}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Sposta</button>
+                </form>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Event listener per il form
+    document.getElementById('move-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const fromInventoryId = document.getElementById('move-from-location').value;
+        const moveQty = parseInt(document.getElementById('move-quantity').value);
+        const toLocationId = document.getElementById('move-to-location').value;
+
+        const fromInventory = product.inventory.find(inv => inv.id === fromInventoryId);
+
+        if (!fromInventory || moveQty > fromInventory.quantity) {
+            alert('Quantità non valida!');
+            return;
+        }
+
+        try {
+            showLoading();
+
+            // Riduci quantità nella locazione di partenza
+            if (moveQty === fromInventory.quantity) {
+                // Elimina se sposti tutto
+                await supabaseClient
+                    .from('inventory')
+                    .delete()
+                    .eq('id', fromInventoryId);
+            } else {
+                // Aggiorna quantità
+                await supabaseClient
+                    .from('inventory')
+                    .update({ quantity: fromInventory.quantity - moveQty })
+                    .eq('id', fromInventoryId);
+            }
+
+            // Verifica se esiste già un inventory nella locazione di destinazione
+            const existingInv = product.inventory.find(inv => inv.location_id === toLocationId);
+
+            if (existingInv) {
+                // Aggiungi alla quantità esistente
+                await supabaseClient
+                    .from('inventory')
+                    .update({ quantity: existingInv.quantity + moveQty })
+                    .eq('id', existingInv.id);
+            } else {
+                // Crea nuovo inventory
+                await supabaseClient
+                    .from('inventory')
+                    .insert([{
+                        product_id: product.id,
+                        quantity: moveQty,
+                        expiry_date: fromInventory.expiry_date,
+                        location_id: toLocationId
+                    }]);
+            }
+
+            document.getElementById('move-modal').remove();
+            await loadProducts();
+            hideLoading();
+            alert('Prodotto spostato con successo!');
+        } catch (error) {
+            console.error('Errore spostamento:', error);
+            alert('Errore nello spostamento: ' + error.message);
+            hideLoading();
+        }
+    });
+}
+
+// Delete Product
 export async function deleteProduct(productId) {
     if (!confirm('Sei sicuro di voler eliminare questo prodotto?')) return;
 
@@ -237,7 +409,7 @@ export async function deleteProduct(productId) {
     }
 }
 
-// View Product Details (exposed globally for onclick)
+// View Product Details
 export function viewProductDetails(productId) {
     const product = getProducts().find(p => p.id === productId);
     if (!product) return;
@@ -257,7 +429,7 @@ ${inventoryDetails || 'Nessun inventario'}
     `);
 }
 
-// Fetch Product from EAN (Open Food Facts API)
+// Fetch Product from EAN
 export async function fetchProductFromEAN() {
     const ean = eanInput.value.trim();
 
