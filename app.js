@@ -20,10 +20,10 @@ window.deleteCategory = deleteCategory;
 window.deleteLocation = deleteLocation;
 window.deleteProduct = deleteProduct;
 window.viewProductDetails = viewProductDetails;
+window.showProductInventoryModal = showProductInventoryModal;
 window.editProductInventory = editProductInventory;
 window.moveProductInventory = moveProductInventory;
 window.deleteInventory = deleteInventory;
-window.showProductInventoryModal = showProductInventoryModal;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', async () => {
