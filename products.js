@@ -226,31 +226,86 @@ async function handleAddProduct(e) {
             document.querySelector('#add-tab h2').textContent = 'Aggiungi Nuovo Prodotto';
             alert('Prodotto modificato con successo!');
         } else {
-            // NUOVO PRODOTTO
-            const { data: productData, error: productError } = await supabaseClient
-                .from('products')
-                .insert([{
-                    user_id: getCurrentUser().id,
-                    ean: ean || null,
-                    name: name,
-                    category_id: categoryId
-                }])
-                .select();
+            // NUOVO PRODOTTO - Controlla se esiste già
+            let productId;
+            
+            // Cerca prodotto esistente (per EAN o nome + categoria)
+            let existingProduct = null;
+            
+            if (ean) {
+                // Cerca per EAN
+                const { data } = await supabaseClient
+                    .from('products')
+                    .select('id')
+                    .eq('user_id', getCurrentUser().id)
+                    .eq('ean', ean)
+                    .single();
+                existingProduct = data;
+            }
+            
+            if (!existingProduct) {
+                // Cerca per nome + categoria
+                const { data } = await supabaseClient
+                    .from('products')
+                    .select('id')
+                    .eq('user_id', getCurrentUser().id)
+                    .eq('name', name)
+                    .eq('category_id', categoryId)
+                    .single();
+                existingProduct = data;
+            }
 
-            if (productError) throw productError;
+            if (existingProduct) {
+                // Prodotto già esistente, usa quello
+                productId = existingProduct.id;
+            } else {
+                // Crea nuovo prodotto
+                const { data: productData, error: productError } = await supabaseClient
+                    .from('products')
+                    .insert([{
+                        user_id: getCurrentUser().id,
+                        ean: ean || null,
+                        name: name,
+                        category_id: categoryId
+                    }])
+                    .select();
 
-            const { error: inventoryError } = await supabaseClient
+                if (productError) throw productError;
+                productId = productData[0].id;
+            }
+
+            // Controlla se esiste già inventory con stessa locazione e scadenza
+            const { data: existingInv } = await supabaseClient
                 .from('inventory')
-                .insert([{
-                    product_id: productData[0].id,
-                    quantity: quantity,
-                    expiry_date: expiryDate,
-                    location_id: locationId
-                }]);
+                .select('id, quantity')
+                .eq('product_id', productId)
+                .eq('location_id', locationId)
+                .eq('expiry_date', expiryDate || null)
+                .single();
 
-            if (inventoryError) throw inventoryError;
+            if (existingInv) {
+                // Somma alla quantità esistente
+                const { error: updateError } = await supabaseClient
+                    .from('inventory')
+                    .update({ quantity: existingInv.quantity + quantity })
+                    .eq('id', existingInv.id);
 
-            alert('Prodotto aggiunto con successo!');
+                if (updateError) throw updateError;
+                alert('Quantità aggiunta al lotto esistente!');
+            } else {
+                // Crea nuovo inventory
+                const { error: inventoryError } = await supabaseClient
+                    .from('inventory')
+                    .insert([{
+                        product_id: productId,
+                        quantity: quantity,
+                        expiry_date: expiryDate,
+                        location_id: locationId
+                    }]);
+
+                if (inventoryError) throw inventoryError;
+                alert('Prodotto aggiunto con successo!');
+            }
         }
 
         addProductForm.reset();
