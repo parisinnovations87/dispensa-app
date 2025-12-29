@@ -22,10 +22,6 @@ const expiryDateInput = document.getElementById('expiry-date');
 // Variabile per gestire la modalità modifica
 let editingProductId = null;
 
-// Expose globally
-window.editProduct = editProduct;
-window.moveProduct = moveProduct;
-
 // Initialize
 export function initializeProducts() {
     addProductForm.addEventListener('submit', handleAddProduct);
@@ -588,4 +584,5 @@ export async function fetchProductFromEAN() {
         fetchEanBtn.disabled = false;
         fetchEanBtn.textContent = 'Cerca';
     }
+
 }
