@@ -12,6 +12,9 @@ const productLocationSelect = document.getElementById('product-location');
 const locationModal = document.getElementById('location-modal');
 const locationForm = document.getElementById('location-form');
 const closeLocationModalBtn = document.querySelector('.close-location');
+const locationModalTitle = document.getElementById('location-modal-title');
+const locationIdInput = document.getElementById('location-id');
+const locationSubmitBtn = document.getElementById('location-submit-btn');
 
 // Initialize
 export function initializeLocations() {
@@ -91,7 +94,7 @@ export function renderLocations() {
     // CORRETTO: Calcola statistiche per ogni location contando la quantità
     const locationStats = {};
     const products = getProducts();
-    
+
     products.forEach(product => {
         product.inventory.forEach(item => {
             if (item.location_id) {
@@ -109,6 +112,7 @@ export function renderLocations() {
             </div>
             <div class="location-actions">
                 <span class="location-stats">${locationStats[location.id] || 0} pezzi</span>
+                <button class="btn btn-secondary btn-small" onclick="editLocation('${location.id}')">Modifica</button>
                 <button class="btn btn-danger btn-small" onclick="deleteLocation('${location.id}')">Elimina</button>
             </div>
         </div>
@@ -133,12 +137,13 @@ export function updateLocationSelects() {
     `;
 }
 
-// Add New Location
+// Add or Update Location
 async function handleAddLocation(e) {
     e.preventDefault();
 
     const name = document.getElementById('location-name').value.trim();
     const icon = document.getElementById('location-icon').value.trim();
+    const locationId = locationIdInput.value;
 
     if (!name || !icon) {
         alert('Inserisci un nome e un\'icona per la locazione');
@@ -147,33 +152,54 @@ async function handleAddLocation(e) {
 
     try {
         showLoading();
-        const { data, error } = await supabaseClient
-            .from('locations')
-            .insert([{
-                user_id: getCurrentUser().id,
-                name: name,
-                icon: icon
-            }])
-            .select();
 
-        if (error) throw error;
+        if (locationId) {
+            // UPDATE existing location
+            const { data, error } = await supabaseClient
+                .from('locations')
+                .update({ name: name, icon: icon })
+                .eq('id', locationId)
+                .select();
 
-        const locations = getLocations();
-        locations.push(data[0]);
-        setLocations(locations);
+            if (error) throw error;
+
+            // Update local state
+            const locations = getLocations();
+            const index = locations.findIndex(l => l.id === locationId);
+            if (index !== -1) {
+                locations[index] = data[0];
+            }
+            setLocations(locations);
+        } else {
+            // INSERT new location
+            const { data, error } = await supabaseClient
+                .from('locations')
+                .insert([{
+                    user_id: getCurrentUser().id,
+                    name: name,
+                    icon: icon
+                }])
+                .select();
+
+            if (error) throw error;
+
+            const locations = getLocations();
+            locations.push(data[0]);
+            setLocations(locations);
+
+            if (productLocationSelect) {
+                productLocationSelect.value = data[0].id;
+            }
+        }
 
         renderLocations();
         updateLocationSelects();
         closeLocationModal();
         locationForm.reset();
         hideLoading();
-
-        if (productLocationSelect) {
-            productLocationSelect.value = data[0].id;
-        }
     } catch (error) {
-        console.error('Errore creazione locazione:', error);
-        alert('Errore nella creazione della locazione: ' + error.message);
+        console.error('Errore salvataggio locazione:', error);
+        alert('Errore nel salvataggio della locazione: ' + error.message);
         hideLoading();
     }
 }
@@ -207,6 +233,10 @@ export async function deleteLocation(locationId) {
 
 // Modal Management
 export function openLocationModal() {
+    // Reset to "add" mode
+    locationIdInput.value = '';
+    locationModalTitle.textContent = 'Nuova Locazione';
+    locationSubmitBtn.textContent = 'Crea Locazione';
     openModal(locationModal);
     document.getElementById('location-name').focus();
 }
@@ -214,4 +244,28 @@ export function openLocationModal() {
 export function closeLocationModal() {
     closeModal(locationModal);
     locationForm.reset();
+    locationIdInput.value = '';
 }
+
+// Edit Location (exposed globally for onclick)
+export function editLocation(locationId) {
+    const locations = getLocations();
+    const location = locations.find(l => l.id === locationId);
+
+    if (!location) {
+        alert('Locazione non trovata');
+        return;
+    }
+
+    // Set to "edit" mode
+    locationIdInput.value = location.id;
+    document.getElementById('location-name').value = location.name;
+    document.getElementById('location-icon').value = location.icon;
+    locationModalTitle.textContent = 'Modifica Locazione';
+    locationSubmitBtn.textContent = 'Salva Modifiche';
+    openModal(locationModal);
+    document.getElementById('location-name').focus();
+}
+
+// Expose editLocation globally for onclick
+window.editLocation = editLocation;
