@@ -1,4 +1,4 @@
-// auth.js - Gestione autenticazione
+// auth.js - Gestione autenticazione CORRETTA
 
 import { setCurrentUser, resetState } from './state.js';
 import { showLoading, hideLoading } from './utils.js';
@@ -15,11 +15,20 @@ const userName = document.getElementById('user-name');
 // Initialize Authentication
 export async function initAuth() {
     try {
+        showLoading();
+        
+        // Pulisci l'hash dall'URL se presente
+        if (window.location.hash) {
+            window.history.replaceState(null, '', window.location.pathname);
+        }
+        
         // Controlla se l'utente è già loggato
         const { data: { session } } = await supabaseClient.auth.getSession();
 
         if (session) {
             await handleAuthSuccess(session.user);
+        } else {
+            hideLoading();
         }
 
         // Listener per cambiamenti di autenticazione
@@ -32,6 +41,7 @@ export async function initAuth() {
         });
     } catch (error) {
         console.error('Errore inizializzazione auth:', error);
+        hideLoading();
     }
 }
 
@@ -56,36 +66,52 @@ export async function handleGoogleLogin() {
 
 // Handle Successful Authentication
 async function handleAuthSuccess(user) {
-    setCurrentUser(user);
+    try {
+        showLoading();
+        
+        setCurrentUser(user);
 
-    // Aggiorna UI
-    loginSection.style.display = 'none';
-    appSection.style.display = 'block';
+        // Aggiorna UI
+        loginSection.style.display = 'none';
+        appSection.style.display = 'block';
 
-    if (user.user_metadata && user.user_metadata.avatar_url) {
-        userAvatar.src = user.user_metadata.avatar_url;
+        if (user.user_metadata && user.user_metadata.avatar_url) {
+            userAvatar.src = user.user_metadata.avatar_url;
+        }
+        userName.textContent = (user.user_metadata && user.user_metadata.full_name) || user.email;
+
+        // Carica i dati in sequenza con gestione errori
+        try {
+            await loadLocations();
+            await initializeDefaultLocations();
+            await loadCategories();
+            await loadProducts();
+        } catch (loadError) {
+            console.error('Errore caricamento dati:', loadError);
+            alert('Errore nel caricamento dei dati. Riprova.');
+        }
+
+        hideLoading();
+    } catch (error) {
+        console.error('Errore handleAuthSuccess:', error);
+        hideLoading();
     }
-    userName.textContent = (user.user_metadata && user.user_metadata.full_name) || user.email;
-
-    // Carica i dati
-    await loadLocations();
-    await initializeDefaultLocations();
-    await loadCategories();
-    await loadProducts();
-
-    hideLoading();
 }
 
 // Sign Out
 export async function handleSignOut() {
     try {
+        showLoading();
         await supabaseClient.auth.signOut();
         resetState();
 
         loginSection.style.display = 'block';
         appSection.style.display = 'none';
+        
+        hideLoading();
     } catch (error) {
         console.error('Errore logout:', error);
         alert('Errore durante il logout');
+        hideLoading();
     }
 }
