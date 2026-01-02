@@ -375,6 +375,13 @@ body {
     font-weight: 500;
 }
 
+.category-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 /* Form */
 .form-container {
     background: var(--white);
