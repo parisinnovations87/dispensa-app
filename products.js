@@ -52,7 +52,7 @@ export async function loadProducts() {
                     .from('inventory')
                     .select(`
                         *,
-                        location:locations(id, name, icon)
+                        location:locations(id, name)
                     `)
                     .eq('product_id', product.id);
 
@@ -67,10 +67,10 @@ export async function loadProducts() {
 
         setProducts(productsWithInventory);
         renderProducts();
-        
+
         // AGGIORNA ANCHE LE LOCAZIONI per il conteggio
         renderLocations();
-        
+
         hideLoading();
     } catch (error) {
         console.error('Errore caricamento prodotti:', error);
@@ -143,7 +143,7 @@ export function showProductInventoryModal(productId) {
 
     const inventoryRows = product.inventory.map(inv => `
         <tr>
-            <td>${inv.location ? escapeHtml(inv.location.icon) + ' ' + escapeHtml(inv.location.name) : 'N/A'}</td>
+            <td>${inv.location ? escapeHtml(inv.location.name) : 'N/A'}</td>
             <td><strong>${inv.quantity} pz</strong></td>
             <td>${inv.expiry_date ? `<span class="${getExpiryClass(inv.expiry_date)}">${formatDate(inv.expiry_date)}</span>` : '-'}</td>
             <td>
@@ -260,10 +260,10 @@ async function handleAddProduct(e) {
         } else {
             // NUOVO PRODOTTO - Controlla se esiste già
             let productId;
-            
+
             // Cerca prodotto esistente (per EAN o nome + categoria)
             let existingProduct = null;
-            
+
             if (ean) {
                 // Cerca per EAN
                 const { data } = await supabaseClient
@@ -274,7 +274,7 @@ async function handleAddProduct(e) {
                     .single();
                 existingProduct = data;
             }
-            
+
             if (!existingProduct) {
                 // Cerca per nome + categoria
                 const { data } = await supabaseClient
@@ -376,7 +376,7 @@ export function editProductInventory(productId, inventoryId) {
 // Sposta un inventory specifico
 export function moveProductInventory(productId, inventoryId) {
     document.getElementById('inventory-modal').remove();
-    
+
     const product = getProducts().find(p => p.id === productId);
     if (!product) return;
 
@@ -389,7 +389,7 @@ export function moveProductInventory(productId, inventoryId) {
             <div class="modal-content">
                 <span class="close" onclick="document.getElementById('move-modal').remove()">&times;</span>
                 <h2>Sposta: ${escapeHtml(product.name)}</h2>
-                <p><strong>Da:</strong> ${inventory.location ? escapeHtml(inventory.location.icon) + ' ' + escapeHtml(inventory.location.name) : 'N/A'} (${inventory.quantity} pz disponibili)</p>
+                <p><strong>Da:</strong> ${inventory.location ? escapeHtml(inventory.location.name) : 'N/A'} (${inventory.quantity} pz disponibili)</p>
                 <form id="move-form">
                     <input type="hidden" id="move-from-inventory" value="${inventoryId}">
                     <div class="form-group">
@@ -400,9 +400,9 @@ export function moveProductInventory(productId, inventoryId) {
                         <label>Verso quale locazione?</label>
                         <select id="move-to-location" required>
                             <option value="">Seleziona locazione di destinazione</option>
-                            ${getLocations().map(loc => 
-                                `<option value="${loc.id}">${escapeHtml(loc.icon)} ${escapeHtml(loc.name)}</option>`
-                            ).join('')}
+                            ${getLocations().map(loc =>
+        `<option value="${loc.id}">${escapeHtml(loc.name)}</option>`
+    ).join('')}
                         </select>
                     </div>
                     <button type="submit" class="btn btn-primary">Sposta</button>
@@ -530,7 +530,7 @@ export function viewProductDetails(productId) {
     if (!product) return;
 
     const inventoryDetails = product.inventory.map(item => {
-        const locationInfo = item.location ? ` - ${item.location.icon} ${item.location.name}` : '';
+        const locationInfo = item.location ? ` - ${item.location.name}` : '';
         return `Quantità: ${item.quantity}${item.expiry_date ? `, Scadenza: ${formatDate(item.expiry_date)}` : ''}${locationInfo}`;
     }).join('\n');
 
@@ -584,5 +584,4 @@ export async function fetchProductFromEAN() {
         fetchEanBtn.disabled = false;
         fetchEanBtn.textContent = 'Cerca';
     }
-
 }
