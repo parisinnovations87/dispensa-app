@@ -1,15 +1,29 @@
-// utils.js - Funzioni utility condivise
+// utils.js - Funzioni utility condivise CORRETTE
 
 // DOM Elements
 const loading = document.getElementById('loading');
 
-// Loading Spinner
+// Loading Spinner con timeout di sicurezza
+let loadingTimeout = null;
+
 export function showLoading() {
-    if (loading) loading.style.display = 'flex';
+    if (loading) {
+        loading.style.display = 'flex';
+        
+        // SAFETY: Nasconde automaticamente dopo 30 secondi
+        clearTimeout(loadingTimeout);
+        loadingTimeout = setTimeout(() => {
+            console.warn('Loading timeout raggiunto - nascondo spinner');
+            hideLoading();
+        }, 30000);
+    }
 }
 
 export function hideLoading() {
-    if (loading) loading.style.display = 'none';
+    if (loading) {
+        loading.style.display = 'none';
+        clearTimeout(loadingTimeout);
+    }
 }
 
 // Date Formatting
