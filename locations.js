@@ -28,21 +28,20 @@ export async function initializeDefaultLocations() {
     if (getLocations().length > 0) return;
 
     const defaultLocations = [
-        { name: 'Frigorifero', icon: '🧊' },
-        { name: 'Dispensa', icon: '🥫' },
-        { name: 'Freezer', icon: '❄️' },
-        { name: 'Cantina', icon: '🍷' },
-        { name: 'Ripostiglio', icon: '📦' }
+        'Frigorifero',
+        'Dispensa',
+        'Freezer',
+        'Cantina',
+        'Ripostiglio'
     ];
 
     try {
-        for (const location of defaultLocations) {
+        for (const locationName of defaultLocations) {
             const { error } = await supabaseClient
                 .from('locations')
                 .insert([{
                     user_id: getCurrentUser().id,
-                    name: location.name,
-                    icon: location.icon
+                    name: locationName
                 }]);
 
             if (error) throw error;
@@ -107,7 +106,6 @@ export function renderLocations() {
     locationsList.innerHTML = locations.map(location => `
         <div class="location-card">
             <div class="location-header">
-                <span class="location-icon">${escapeHtml(location.icon)}</span>
                 <span class="location-name">${escapeHtml(location.name)}</span>
             </div>
             <div class="location-actions">
@@ -123,7 +121,7 @@ export function renderLocations() {
 export function updateLocationSelects() {
     const locations = getLocations();
     const options = locations.map(loc =>
-        `<option value="${loc.id}">${escapeHtml(loc.icon)} ${escapeHtml(loc.name)}</option>`
+        `<option value="${loc.id}">${escapeHtml(loc.name)}</option>`
     ).join('');
 
     productLocationSelect.innerHTML = `
@@ -142,11 +140,10 @@ async function handleAddLocation(e) {
     e.preventDefault();
 
     const name = document.getElementById('location-name').value.trim();
-    const icon = document.getElementById('location-icon').value.trim();
     const locationId = locationIdInput.value;
 
-    if (!name || !icon) {
-        alert('Inserisci un nome e un\'icona per la locazione');
+    if (!name) {
+        alert('Inserisci un nome per la locazione');
         return;
     }
 
@@ -157,7 +154,7 @@ async function handleAddLocation(e) {
             // UPDATE existing location
             const { data, error } = await supabaseClient
                 .from('locations')
-                .update({ name: name, icon: icon })
+                .update({ name: name })
                 .eq('id', locationId)
                 .select();
 
@@ -176,8 +173,7 @@ async function handleAddLocation(e) {
                 .from('locations')
                 .insert([{
                     user_id: getCurrentUser().id,
-                    name: name,
-                    icon: icon
+                    name: name
                 }])
                 .select();
 
@@ -260,7 +256,6 @@ export function editLocation(locationId) {
     // Set to "edit" mode
     locationIdInput.value = location.id;
     document.getElementById('location-name').value = location.name;
-    document.getElementById('location-icon').value = location.icon;
     locationModalTitle.textContent = 'Modifica Locazione';
     locationSubmitBtn.textContent = 'Salva Modifiche';
     openModal(locationModal);
