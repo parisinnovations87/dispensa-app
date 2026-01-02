@@ -1,4 +1,4 @@
-// app.js - Orchestratore principale CORRETTO
+// app.js - Orchestratore principale CORRETTO (CON TAB SCADENZE)
 
 import { initAuth, handleGoogleLogin, handleSignOut } from './auth.js';
 import { initializeCategories, deleteCategory, openCategoryModal } from './categories.js';
@@ -80,3 +80,4 @@ function setupVisibilityHandler() {
         hideLoading();
     });
 }
+
