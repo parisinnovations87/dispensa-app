@@ -1,4 +1,4 @@
-// app.js - Orchestratore principale (con Tab Scadenze)
+// app.js - Orchestratore principale CORRETTO
 
 import { initAuth, handleGoogleLogin, handleSignOut } from './auth.js';
 import { initializeCategories, deleteCategory, openCategoryModal } from './categories.js';
@@ -6,6 +6,7 @@ import { initializeLocations, deleteLocation, openLocationModal } from './locati
 import { initializeProducts, deleteProduct, viewProductDetails, editProductInventory, moveProductInventory, deleteInventory, showProductInventoryModal } from './products.js';
 import { initializeExpiry, renderExpiryTable } from './expiry.js';
 import { initializeTabs } from './ui.js';
+import { hideLoading } from './utils.js';
 
 // DOM Elements
 const loginButton = document.getElementById('login-button');
@@ -39,6 +40,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize authentication
     await initAuth();
+    
+    // Setup visibility change handler
+    setupVisibilityHandler();
 });
 
 function setupEventListeners() {
@@ -60,4 +64,19 @@ function handleTabChange(tabName) {
     if (tabName === 'expiry') {
         renderExpiryTable();
     }
+}
+
+// NUOVO: Gestisce il ritorno alla pagina
+function setupVisibilityHandler() {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            // Quando la pagina diventa visibile, nascondi lo spinner se attivo
+            hideLoading();
+        }
+    });
+    
+    // Gestisce anche il focus della finestra
+    window.addEventListener('focus', () => {
+        hideLoading();
+    });
 }
