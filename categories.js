@@ -12,6 +12,9 @@ const productCategorySelect = document.getElementById('product-category');
 const categoryModal = document.getElementById('category-modal');
 const categoryForm = document.getElementById('category-form');
 const closeModalBtn = document.querySelector('.close');
+const categoryModalTitle = document.getElementById('category-modal-title');
+const categoryIdInput = document.getElementById('category-id');
+const categorySubmitBtn = document.getElementById('category-submit-btn');
 
 // Initialize
 export function initializeCategories() {
@@ -61,7 +64,10 @@ export function renderCategories() {
     categoriesList.innerHTML = categories.map(category => `
         <div class="category-card">
             <span class="category-name">${escapeHtml(category.name)}</span>
-            <button class="btn btn-danger" onclick="deleteCategory('${category.id}')">Elimina</button>
+            <div class="category-actions">
+                <button class="btn btn-secondary btn-small" onclick="editCategory('${category.id}')">Modifica</button>
+                <button class="btn btn-danger btn-small" onclick="deleteCategory('${category.id}')">Elimina</button>
+            </div>
         </div>
     `).join('');
 }
@@ -84,11 +90,12 @@ export function updateCategorySelects() {
     `;
 }
 
-// Add New Category
+// Add or Update Category
 async function handleAddCategory(e) {
     e.preventDefault();
 
     const name = document.getElementById('category-name').value.trim();
+    const categoryId = categoryIdInput.value;
 
     if (!name) {
         alert('Inserisci un nome per la categoria');
@@ -97,33 +104,54 @@ async function handleAddCategory(e) {
 
     try {
         showLoading();
-        const { data, error } = await supabaseClient
-            .from('categories')
-            .insert([{
-                user_id: getCurrentUser().id,
-                name: name
-            }])
-            .select();
 
-        if (error) throw error;
+        if (categoryId) {
+            // UPDATE existing category
+            const { data, error } = await supabaseClient
+                .from('categories')
+                .update({ name: name })
+                .eq('id', categoryId)
+                .select();
 
-        const categories = getCategories();
-        categories.push(data[0]);
-        setCategories(categories);
+            if (error) throw error;
+
+            // Update local state
+            const categories = getCategories();
+            const index = categories.findIndex(c => c.id === categoryId);
+            if (index !== -1) {
+                categories[index] = data[0];
+            }
+            setCategories(categories);
+        } else {
+            // INSERT new category
+            const { data, error } = await supabaseClient
+                .from('categories')
+                .insert([{
+                    user_id: getCurrentUser().id,
+                    name: name
+                }])
+                .select();
+
+            if (error) throw error;
+
+            const categories = getCategories();
+            categories.push(data[0]);
+            setCategories(categories);
+
+            // Se stiamo aggiungendo dal form prodotto, selezioniamola
+            if (productCategorySelect) {
+                productCategorySelect.value = data[0].id;
+            }
+        }
 
         renderCategories();
         updateCategorySelects();
         closeCategoryModal();
         categoryForm.reset();
         hideLoading();
-
-        // Se stiamo aggiungendo dal form prodotto, selezioniamola
-        if (productCategorySelect) {
-            productCategorySelect.value = data[0].id;
-        }
     } catch (error) {
-        console.error('Errore creazione categoria:', error);
-        alert('Errore nella creazione della categoria: ' + error.message);
+        console.error('Errore salvataggio categoria:', error);
+        alert('Errore nel salvataggio della categoria: ' + error.message);
         hideLoading();
     }
 }
@@ -157,6 +185,10 @@ export async function deleteCategory(categoryId) {
 
 // Modal Management
 export function openCategoryModal() {
+    // Reset to "add" mode
+    categoryIdInput.value = '';
+    categoryModalTitle.textContent = 'Nuova Categoria';
+    categorySubmitBtn.textContent = 'Crea Categoria';
     openModal(categoryModal);
     document.getElementById('category-name').focus();
 }
@@ -164,4 +196,27 @@ export function openCategoryModal() {
 export function closeCategoryModal() {
     closeModal(categoryModal);
     categoryForm.reset();
+    categoryIdInput.value = '';
 }
+
+// Edit Category (exposed globally for onclick)
+export function editCategory(categoryId) {
+    const categories = getCategories();
+    const category = categories.find(c => c.id === categoryId);
+
+    if (!category) {
+        alert('Categoria non trovata');
+        return;
+    }
+
+    // Set to "edit" mode
+    categoryIdInput.value = category.id;
+    document.getElementById('category-name').value = category.name;
+    categoryModalTitle.textContent = 'Modifica Categoria';
+    categorySubmitBtn.textContent = 'Salva Modifiche';
+    openModal(categoryModal);
+    document.getElementById('category-name').focus();
+}
+
+// Expose editCategory globally for onclick
+window.editCategory = editCategory;
