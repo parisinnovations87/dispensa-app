@@ -24,7 +24,7 @@ export function initializeExpiry() {
 // Render Expiry Table
 export function renderExpiryTable() {
     const products = getProducts();
-    
+
     // Espandi tutti gli inventory in una lista piatta
     const flatInventory = [];
     products.forEach(product => {
@@ -64,8 +64,8 @@ export function renderExpiryTable() {
 
     expiryTable.innerHTML = sorted.map(item => {
         const expiryStatus = getExpiryStatus(item.expiryDate);
-        const expiryDisplay = item.expiryDate ? 
-            `<span class="${getExpiryClass(item.expiryDate)}">${formatDate(item.expiryDate)}</span>` : 
+        const expiryDisplay = item.expiryDate ?
+            `<span class="${getExpiryClass(item.expiryDate)}">${formatDate(item.expiryDate)}</span>` :
             '<span class="expiry-badge">Nessuna</span>';
 
         return `
@@ -75,7 +75,7 @@ export function renderExpiryTable() {
                     ${item.productEan ? `<br><small>EAN: ${item.productEan}</small>` : ''}
                 </td>
                 <td>${item.category ? escapeHtml(item.category.name) : '-'}</td>
-                <td>${item.location ? escapeHtml(item.location.icon) + ' ' + escapeHtml(item.location.name) : '-'}</td>
+                <td>${item.location ? escapeHtml(item.location.name) : '-'}</td>
                 <td><strong>${item.quantity} pz</strong></td>
                 <td>${expiryDisplay}</td>
                 <td>
@@ -102,10 +102,10 @@ function getExpiryStatus(expiryDateString) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const expiryDate = new Date(expiryDateString);
     expiryDate.setHours(0, 0, 0, 0);
-    
+
     const diffTime = expiryDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -136,7 +136,7 @@ function renderAlerts(inventory) {
 
         const expiryDate = new Date(item.expiryDate);
         expiryDate.setHours(0, 0, 0, 0);
-        
+
         const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
 
         if (diffDays < 0) expired++;
