@@ -29,6 +29,9 @@ export function initializeProducts() {
     searchInput.addEventListener('input', filterProducts);
     categoryFilter.addEventListener('change', filterProducts);
     locationFilter.addEventListener('change', filterProducts);
+
+    // Auto-select category when product name matches an existing product
+    productNameInput.addEventListener('blur', checkExistingProductByName);
 }
 
 // Load Products from Supabase
@@ -558,6 +561,23 @@ export async function fetchProductFromEAN() {
         fetchEanBtn.disabled = true;
         fetchEanBtn.textContent = 'Ricerca...';
 
+        // Prima controlla se abbiamo già questo prodotto localmente
+        const existingProduct = getProducts().find(p => p.ean === ean);
+
+        if (existingProduct) {
+            // Prodotto già esistente nel nostro database
+            productNameInput.value = existingProduct.name;
+            if (existingProduct.category_id) {
+                productCategorySelect.value = existingProduct.category_id;
+            }
+            hideLoading();
+            fetchEanBtn.disabled = false;
+            fetchEanBtn.textContent = 'Cerca';
+            alert(`Prodotto già presente: ${existingProduct.name}. Categoria pre-selezionata.`);
+            return;
+        }
+
+        // Se non trovato localmente, cerca su Open Food Facts
         const response = await fetch(`${OPENFOODFACTS_API}/${ean}.json`);
         const data = await response.json();
 
@@ -583,5 +603,24 @@ export async function fetchProductFromEAN() {
         hideLoading();
         fetchEanBtn.disabled = false;
         fetchEanBtn.textContent = 'Cerca';
+    }
+}
+
+// Check for existing product by name and pre-select category
+function checkExistingProductByName() {
+    const name = productNameInput.value.trim().toLowerCase();
+
+    if (!name || name.length < 2) return;
+
+    // Cerca un prodotto con lo stesso nome (case insensitive)
+    const existingProduct = getProducts().find(p =>
+        p.name.toLowerCase() === name
+    );
+
+    if (existingProduct && existingProduct.category_id) {
+        // Solo se la categoria non è già stata selezionata manualmente
+        if (!productCategorySelect.value) {
+            productCategorySelect.value = existingProduct.category_id;
+        }
     }
 }
