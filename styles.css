@@ -436,11 +436,23 @@ body {
 .category-input-group {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
-.ean-input-group input,
+.ean-input-group input {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px;
+}
+
 .category-input-group select {
     flex: 1;
+    min-width: 0;
+}
+
+.ean-input-group .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 /* Modal */
@@ -578,6 +590,52 @@ body {
     .location-actions {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    /* MOBILE: EAN Input Group Optimization */
+    .ean-input-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .ean-input-group input {
+        width: 100%;
+        font-size: 16px;
+        padding: 14px;
+    }
+
+    .ean-input-group .btn {
+        width: 100%;
+        font-size: 15px;
+        padding: 12px;
+    }
+
+    /* Barcode Scanner Mobile */
+    #barcode-scanner-container {
+        margin-top: 15px;
+        padding: 10px;
+    }
+
+    #barcode-reader {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    #barcode-reader video {
+        width: 100% !important;
+        height: auto !important;
+    }
+
+    #stop-scanner-btn {
+        width: 100%;
+        margin-top: 12px;
+    }
+
+    /* Form inputs mobile */
+    .form-group input,
+    .form-group select {
+        font-size: 16px;
+        padding: 14px;
     }
 }
 
