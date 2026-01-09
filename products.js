@@ -18,9 +18,21 @@ const productCategorySelect = document.getElementById('product-category');
 const productLocationSelect = document.getElementById('product-location');
 const quantityInput = document.getElementById('quantity');
 const expiryDateInput = document.getElementById('expiry-date');
+const scanBarcodeBtn = document.getElementById('scan-barcode-btn');
+const stopScannerBtn = document.getElementById('stop-scanner-btn');
+const barcodeScannerContainer = document.getElementById('barcode-scanner-container');
+const nameDropdownContainer = document.getElementById('name-dropdown-container');
+const nameSelector = document.getElementById('name-selector');
 
 // Variabile per gestire la modalità modifica
 let editingProductId = null;
+
+// Barcode Scanner Instance
+let html5QrcodeScanner = null;
+
+// Variabili per gestire i nomi custom e originali
+let currentOriginalName = '';
+let currentCustomName = '';
 
 // Initialize
 export function initializeProducts() {
@@ -32,6 +44,13 @@ export function initializeProducts() {
 
     // Auto-select category when product name matches an existing product
     productNameInput.addEventListener('blur', checkExistingProductByName);
+
+    // Barcode Scanner
+    scanBarcodeBtn.addEventListener('click', startScanner);
+    stopScannerBtn.addEventListener('click', stopScanner);
+
+    // Name selector change
+    nameSelector.addEventListener('change', handleNameSelection);
 }
 
 // Load Products from Supabase
@@ -290,18 +309,33 @@ async function handleAddProduct(e) {
                 existingProduct = data;
             }
 
+
             if (existingProduct) {
                 // Prodotto già esistente, usa quello
                 productId = existingProduct.id;
             } else {
                 // Crea nuovo prodotto
+                // Determina original_name e custom_name
+                let originalName = currentOriginalName || null;
+                let customName = null;
+
+                // Se il nome corrente è diverso dall'original_name, allora è custom
+                if (currentOriginalName && name !== currentOriginalName) {
+                    customName = name;
+                } else if (!currentOriginalName) {
+                    // Se non c'è original_name (inserimento manuale), salva come original
+                    originalName = name;
+                }
+
                 const { data: productData, error: productError } = await supabaseClient
                     .from('products')
                     .insert([{
                         user_id: getCurrentUser().id,
                         ean: ean || null,
                         name: name,
-                        category_id: categoryId
+                        category_id: categoryId,
+                        original_name: originalName,
+                        custom_name: customName
                     }])
                     .select();
 
@@ -344,6 +378,9 @@ async function handleAddProduct(e) {
         }
 
         addProductForm.reset();
+        hideNameDropdown();
+        currentOriginalName = '';
+        currentCustomName = '';
         await loadProducts();
         switchTab('products');
         hideLoading();
@@ -566,10 +603,19 @@ export async function fetchProductFromEAN() {
 
         if (existingProduct) {
             // Prodotto già esistente nel nostro database
-            productNameInput.value = existingProduct.name;
             if (existingProduct.category_id) {
                 productCategorySelect.value = existingProduct.category_id;
             }
+
+            // Mostra dropdown se ci sono custom_name e/o original_name
+            if (existingProduct.custom_name || existingProduct.original_name) {
+                showNameDropdown(existingProduct.custom_name, existingProduct.original_name);
+            } else {
+                // Nessun nome custom/original, usa solo il nome normale
+                productNameInput.value = existingProduct.name;
+                hideNameDropdown();
+            }
+
             hideLoading();
             fetchEanBtn.disabled = false;
             fetchEanBtn.textContent = 'Cerca';
@@ -586,6 +632,10 @@ export async function fetchProductFromEAN() {
 
             if (productName) {
                 productNameInput.value = productName;
+                // Salva come original_name per riferimento futuro
+                currentOriginalName = productName;
+                currentCustomName = '';
+                hideNameDropdown();
                 alert(`Prodotto trovato: ${productName}`);
             } else {
                 alert('Prodotto trovato ma senza nome. Inseriscilo manualmente.');
@@ -606,6 +656,7 @@ export async function fetchProductFromEAN() {
     }
 }
 
+
 // Check for existing product by name and pre-select category
 function checkExistingProductByName() {
     const name = productNameInput.value.trim().toLowerCase();
@@ -623,4 +674,128 @@ function checkExistingProductByName() {
             productCategorySelect.value = existingProduct.category_id;
         }
     }
+}
+
+// ===== BARCODE SCANNER FUNCTIONS =====
+
+// Start Barcode Scanner
+function startScanner() {
+    if (html5QrcodeScanner) {
+        alert('Lo scanner è già attivo!');
+        return;
+    }
+
+    barcodeScannerContainer.style.display = 'block';
+    scanBarcodeBtn.disabled = true;
+
+    html5QrcodeScanner = new Html5Qrcode("barcode-reader");
+
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+    };
+
+    html5QrcodeScanner.start(
+        { facingMode: "environment" }, // Use back camera on mobile
+        config,
+        onScanSuccess,
+        onScanError
+    ).catch((err) => {
+        console.error('Errore avvio scanner:', err);
+        alert('Impossibile avviare lo scanner. Verifica i permessi della fotocamera.');
+        stopScanner();
+    });
+}
+
+// Stop Barcode Scanner
+function stopScanner() {
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            barcodeScannerContainer.style.display = 'none';
+            scanBarcodeBtn.disabled = false;
+        }).catch((err) => {
+            console.error('Errore chiusura scanner:', err);
+            html5QrcodeScanner = null;
+            barcodeScannerContainer.style.display = 'none';
+            scanBarcodeBtn.disabled = false;
+        });
+    }
+}
+
+// On Scan Success
+function onScanSuccess(decodedText, decodedResult) {
+    console.log(`Barcode scansionato: ${decodedText}`);
+
+    // Set EAN input
+    eanInput.value = decodedText;
+
+    // Stop scanner
+    stopScanner();
+
+    // Fetch product info
+    fetchProductFromEAN();
+}
+
+// On Scan Error (silent)
+function onScanError(errorMessage) {
+    // Non mostrare errori continui di scansione
+}
+
+// ===== CUSTOM NAMES FUNCTIONS =====
+
+// Show Name Dropdown with custom and original names
+function showNameDropdown(customName, originalName) {
+    currentCustomName = customName || '';
+    currentOriginalName = originalName || '';
+
+    if (!customName && !originalName) {
+        nameDropdownContainer.style.display = 'none';
+        return;
+    }
+
+    // Update the select options
+    nameSelector.innerHTML = '';
+
+    if (customName) {
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = `Personalizzato: ${customName}`;
+        nameSelector.appendChild(customOption);
+    }
+
+    if (originalName) {
+        const originalOption = document.createElement('option');
+        originalOption.value = 'original';
+        originalOption.textContent = `Originale: ${originalName}`;
+        nameSelector.appendChild(originalOption);
+    }
+
+    // Select custom by default if exists
+    nameSelector.value = customName ? 'custom' : 'original';
+
+    // Set the input value
+    productNameInput.value = customName || originalName;
+
+    nameDropdownContainer.style.display = 'block';
+}
+
+// Handle Name Selection Change
+function handleNameSelection() {
+    const selected = nameSelector.value;
+
+    if (selected === 'custom' && currentCustomName) {
+        productNameInput.value = currentCustomName;
+    } else if (selected === 'original' && currentOriginalName) {
+        productNameInput.value = currentOriginalName;
+    }
+}
+
+// Hide Name Dropdown
+function hideNameDropdown() {
+    nameDropdownContainer.style.display = 'none';
+    currentCustomName = '';
+    currentOriginalName = '';
 }
