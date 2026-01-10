@@ -310,20 +310,40 @@ async function handleAddProduct(e) {
             }
 
 
+
             if (existingProduct) {
                 // Prodotto già esistente, usa quello
                 productId = existingProduct.id;
+
+                // NUOVO: Aggiorna i nomi se necessario
+                // Se abbiamo un original_name dall'API e il nome è stato modificato
+                if (currentOriginalName && name !== currentOriginalName) {
+                    // L'utente ha modificato il nome, aggiorna custom_name
+                    await supabaseClient
+                        .from('products')
+                        .update({
+                            original_name: currentOriginalName,
+                            custom_name: name,
+                            name: name
+                        })
+                        .eq('id', existingProduct.id);
+                }
             } else {
                 // Crea nuovo prodotto
                 // Determina original_name e custom_name
-                let originalName = currentOriginalName || null;
+                let originalName = null;
                 let customName = null;
 
-                // Se il nome corrente è diverso dall'original_name, allora è custom
-                if (currentOriginalName && name !== currentOriginalName) {
-                    customName = name;
-                } else if (!currentOriginalName) {
-                    // Se non c'è original_name (inserimento manuale), salva come original
+                // Se abbiamo un nome dall'API (currentOriginalName è valorizzato)
+                if (currentOriginalName) {
+                    originalName = currentOriginalName;
+                    // Se il nome corrente è diverso dall'original_name, allora è custom
+                    if (name !== currentOriginalName) {
+                        customName = name;
+                    }
+                } else {
+                    // Inserimento completamente manuale (senza API)
+                    // Salva il nome inserito come original_name
                     originalName = name;
                 }
 
@@ -607,12 +627,17 @@ export async function fetchProductFromEAN() {
                 productCategorySelect.value = existingProduct.category_id;
             }
 
+            // IMPORTANTE: Imposta le variabili current per mantenere i nomi esistenti
+            currentOriginalName = existingProduct.original_name || '';
+            currentCustomName = existingProduct.custom_name || '';
+
             // Mostra dropdown se ci sono custom_name e/o original_name
             if (existingProduct.custom_name || existingProduct.original_name) {
                 showNameDropdown(existingProduct.custom_name, existingProduct.original_name);
             } else {
                 // Nessun nome custom/original, usa solo il nome normale
                 productNameInput.value = existingProduct.name;
+                currentOriginalName = existingProduct.name;
                 hideNameDropdown();
             }
 
