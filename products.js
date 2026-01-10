@@ -241,6 +241,13 @@ async function handleAddProduct(e) {
         return;
     }
 
+    // DEBUG: Log per capire lo stato delle variabili
+    console.log('=== SALVATAGGIO PRODOTTO ===');
+    console.log('Nome inserito:', name);
+    console.log('currentOriginalName:', currentOriginalName);
+    console.log('currentCustomName:', currentCustomName);
+    console.log('EAN:', ean);
+
     try {
         showLoading();
 
@@ -346,6 +353,12 @@ async function handleAddProduct(e) {
                     // Salva il nome inserito come original_name
                     originalName = name;
                 }
+
+                // DEBUG: Log cosa stiamo per salvare
+                console.log('--- Creazione nuovo prodotto ---');
+                console.log('originalName da salvare:', originalName);
+                console.log('customName da salvare:', customName);
+                console.log('name da salvare:', name);
 
                 const { data: productData, error: productError } = await supabaseClient
                     .from('products')
@@ -660,6 +673,12 @@ export async function fetchProductFromEAN() {
                 // Salva come original_name per riferimento futuro
                 currentOriginalName = productName;
                 currentCustomName = '';
+
+                // DEBUG: Log quando impostiamo original name dall'API
+                console.log('=== FETCH da API ===');
+                console.log('Nome recuperato dall\'API:', productName);
+                console.log('currentOriginalName impostato a:', currentOriginalName);
+
                 hideNameDropdown();
                 alert(`Prodotto trovato: ${productName}`);
             } else {
