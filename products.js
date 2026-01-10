@@ -846,7 +846,8 @@ function handleNameSelection() {
 
 // Hide Name Dropdown
 function hideNameDropdown() {
+    console.log('!!! hideNameDropdown chiamato');
+    // IMPORTANTE: NON cancellare i data-attributes, servono per il salvataggio!
+    // Solo nascondi l'UI
     nameDropdownContainer.style.display = 'none';
-    productNameInput.dataset.customName = '';
-    productNameInput.dataset.originalName = '';
 }
