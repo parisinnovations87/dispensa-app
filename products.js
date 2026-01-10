@@ -241,11 +241,15 @@ async function handleAddProduct(e) {
         return;
     }
 
+    // Leggi i nomi da data-attributes (più affidabile delle variabili globali)
+    const originalNameFromData = productNameInput.dataset.originalName || '';
+    const customNameFromData = productNameInput.dataset.customName || '';
+
     // DEBUG: Log per capire lo stato delle variabili
     console.log('=== SALVATAGGIO PRODOTTO ===');
     console.log('Nome inserito:', name);
-    console.log('currentOriginalName:', currentOriginalName);
-    console.log('currentCustomName:', currentCustomName);
+    console.log('originalName da data-attribute:', originalNameFromData);
+    console.log('customName da data-attribute:', customNameFromData);
     console.log('EAN:', ean);
 
     try {
@@ -324,12 +328,12 @@ async function handleAddProduct(e) {
 
                 // NUOVO: Aggiorna i nomi se necessario
                 // Se abbiamo un original_name dall'API e il nome è stato modificato
-                if (currentOriginalName && name !== currentOriginalName) {
+                if (originalNameFromData && name !== originalNameFromData) {
                     // L'utente ha modificato il nome, aggiorna custom_name
                     await supabaseClient
                         .from('products')
                         .update({
-                            original_name: currentOriginalName,
+                            original_name: originalNameFromData,
                             custom_name: name,
                             name: name
                         })
@@ -341,11 +345,11 @@ async function handleAddProduct(e) {
                 let originalName = null;
                 let customName = null;
 
-                // Se abbiamo un nome dall'API (currentOriginalName è valorizzato)
-                if (currentOriginalName) {
-                    originalName = currentOriginalName;
+                // Se abbiamo un nome dall'API (originalNameFromData è valorizzato)
+                if (originalNameFromData) {
+                    originalName = originalNameFromData;
                     // Se il nome corrente è diverso dall'original_name, allora è custom
-                    if (name !== currentOriginalName) {
+                    if (name !== originalNameFromData) {
                         customName = name;
                     }
                 } else {
@@ -412,8 +416,9 @@ async function handleAddProduct(e) {
 
         addProductForm.reset();
         hideNameDropdown();
-        currentOriginalName = '';
-        currentCustomName = '';
+        // Reset data attributes
+        productNameInput.dataset.originalName = '';
+        productNameInput.dataset.customName = '';
         await loadProducts();
         switchTab('products');
         hideLoading();
@@ -640,17 +645,16 @@ export async function fetchProductFromEAN() {
                 productCategorySelect.value = existingProduct.category_id;
             }
 
-            // IMPORTANTE: Imposta le variabili current per mantenere i nomi esistenti
-            currentOriginalName = existingProduct.original_name || '';
-            currentCustomName = existingProduct.custom_name || '';
+            // IMPORTANTE: Salva in data-attributes
+            productNameInput.dataset.originalName = existingProduct.original_name || existingProduct.name;
+            productNameInput.dataset.customName = existingProduct.custom_name || '';
 
             // Mostra dropdown se ci sono custom_name e/o original_name
             if (existingProduct.custom_name || existingProduct.original_name) {
                 showNameDropdown(existingProduct.custom_name, existingProduct.original_name);
             } else {
-                // Nessun nome custom/original, usa solo il nome normale
+                // Nessun nome custom/original, usa solo il nome normale  
                 productNameInput.value = existingProduct.name;
-                currentOriginalName = existingProduct.name;
                 hideNameDropdown();
             }
 
@@ -670,14 +674,14 @@ export async function fetchProductFromEAN() {
 
             if (productName) {
                 productNameInput.value = productName;
-                // Salva come original_name per riferimento futuro
-                currentOriginalName = productName;
-                currentCustomName = '';
+                // Salva come data-attribute per riferimento futuro (più affidabile)
+                productNameInput.dataset.originalName = productName;
+                productNameInput.dataset.customName = '';
 
                 // DEBUG: Log quando impostiamo original name dall'API
                 console.log('=== FETCH da API ===');
                 console.log('Nome recuperato dall\'API:', productName);
-                console.log('currentOriginalName impostato a:', currentOriginalName);
+                console.log('Salvato in data-attribute originalName:', productNameInput.dataset.originalName);
 
                 hideNameDropdown();
                 alert(`Prodotto trovato: ${productName}`);
@@ -792,8 +796,9 @@ function onScanError(errorMessage) {
 
 // Show Name Dropdown with custom and original names
 function showNameDropdown(customName, originalName) {
-    currentCustomName = customName || '';
-    currentOriginalName = originalName || '';
+    // Salva in data-attributes invece che in variabili globali
+    productNameInput.dataset.customName = customName || '';
+    productNameInput.dataset.originalName = originalName || '';
 
     if (!customName && !originalName) {
         nameDropdownContainer.style.display = 'none';
@@ -829,17 +834,19 @@ function showNameDropdown(customName, originalName) {
 // Handle Name Selection Change
 function handleNameSelection() {
     const selected = nameSelector.value;
+    const customName = productNameInput.dataset.customName;
+    const originalName = productNameInput.dataset.originalName;
 
-    if (selected === 'custom' && currentCustomName) {
-        productNameInput.value = currentCustomName;
-    } else if (selected === 'original' && currentOriginalName) {
-        productNameInput.value = currentOriginalName;
+    if (selected === 'custom' && customName) {
+        productNameInput.value = customName;
+    } else if (selected === 'original' && originalName) {
+        productNameInput.value = originalName;
     }
 }
 
 // Hide Name Dropdown
 function hideNameDropdown() {
     nameDropdownContainer.style.display = 'none';
-    currentCustomName = '';
-    currentOriginalName = '';
+    productNameInput.dataset.customName = '';
+    productNameInput.dataset.originalName = '';
 }
