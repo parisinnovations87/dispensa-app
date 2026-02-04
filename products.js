@@ -26,6 +26,7 @@ const nameSelector = document.getElementById('name-selector');
 
 // Variabile per gestire la modalità modifica
 let editingProductId = null;
+let editingInventoryId = null; // NUOVO: Traccia quale specifico lotto stiamo modificando
 
 // Barcode Scanner Instance
 let html5QrcodeScanner = null;
@@ -268,28 +269,40 @@ async function handleAddProduct(e) {
 
             if (productError) throw productError;
 
-            // Aggiorna inventory (elimina vecchi e crea nuovo)
-            const { error: deleteError } = await supabaseClient
-                .from('inventory')
-                .delete()
-                .eq('product_id', editingProductId);
+            // FIX: GESTIONE MODIFICA INVENTARIO
+            if (editingInventoryId) {
+                // Stiamo modificando un lotto specifico -> Aggiorna SOLO quello
+                const { error: inventoryError } = await supabaseClient
+                    .from('inventory')
+                    .update({
+                        quantity: quantity,
+                        expiry_date: expiryDate,
+                        location_id: locationId
+                    })
+                    .eq('id', editingInventoryId);
 
-            if (deleteError) throw deleteError;
+                if (inventoryError) throw inventoryError;
+                alert('Lotto aggiornato con successo!');
+            } else {
+                // Fallback (non dovrebbe accadere con la UI attuale, ma per sicurezza):
+                // Se stiamo modificando il prodotto ma senza un ID inventory specifico
+                // Aggiungiamo un nuovo lotto invece di cancellare tutto.
+                const { error: inventoryError } = await supabaseClient
+                    .from('inventory')
+                    .insert([{
+                        product_id: editingProductId,
+                        quantity: quantity,
+                        expiry_date: expiryDate,
+                        location_id: locationId
+                    }]);
 
-            const { error: inventoryError } = await supabaseClient
-                .from('inventory')
-                .insert([{
-                    product_id: editingProductId,
-                    quantity: quantity,
-                    expiry_date: expiryDate,
-                    location_id: locationId
-                }]);
-
-            if (inventoryError) throw inventoryError;
+                if (inventoryError) throw inventoryError;
+                alert('Nuovo lotto aggiunto al prodotto!');
+            }
 
             editingProductId = null;
+            editingInventoryId = null;
             document.querySelector('#add-tab h2').textContent = 'Aggiungi Nuovo Prodotto';
-            alert('Prodotto modificato con successo!');
         } else {
             // NUOVO PRODOTTO - Controlla se esiste già
             let productId;
@@ -438,6 +451,7 @@ export function editProductInventory(productId, inventoryId) {
     if (!product || !inventory) return;
 
     editingProductId = productId;
+    editingInventoryId = inventoryId; // Imposta l'ID del lotto da modificare
     document.querySelector('#add-tab h2').textContent = 'Modifica Lotto';
 
     eanInput.value = product.ean || '';
