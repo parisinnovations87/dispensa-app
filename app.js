@@ -79,5 +79,9 @@ function setupVisibilityHandler() {
     window.addEventListener('focus', () => {
         hideLoading();
     });
-}
 
+    // FIX: Gestione bfcache e ritorno alla pagina (risolve freeze)
+    window.addEventListener('pageshow', (event) => {
+        hideLoading();
+    });
+}
