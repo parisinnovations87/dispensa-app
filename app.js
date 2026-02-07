@@ -3,7 +3,7 @@
 import { initAuth, handleGoogleLogin, handleSignOut } from './auth.js';
 import { initializeCategories, deleteCategory, openCategoryModal } from './categories.js';
 import { initializeLocations, deleteLocation, openLocationModal } from './locations.js';
-import { initializeProducts, deleteProduct, viewProductDetails, editProductInventory, moveProductInventory, deleteInventory, showProductInventoryModal } from './products.js';
+import { initializeProducts, deleteProduct, viewProductDetails, editProductInventory, moveProductInventory, deleteInventory, showProductInventoryModal, renderRecurringProducts } from './products.js';
 import { initializeExpiry, renderExpiryTable } from './expiry.js';
 import { initializeTabs } from './ui.js';
 import { hideLoading } from './utils.js';
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize authentication
     await initAuth();
-    
+
     // Setup visibility change handler
     setupVisibilityHandler();
 });
@@ -63,6 +63,8 @@ function setupEventListeners() {
 function handleTabChange(tabName) {
     if (tabName === 'expiry') {
         renderExpiryTable();
+    } else if (tabName === 'recurring') {
+        renderRecurringProducts();
     }
 }
 
@@ -74,7 +76,7 @@ function setupVisibilityHandler() {
             hideLoading();
         }
     });
-    
+
     // Gestisce anche il focus della finestra
     window.addEventListener('focus', () => {
         hideLoading();
