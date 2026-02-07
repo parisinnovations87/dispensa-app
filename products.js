@@ -52,6 +52,21 @@ export function initializeProducts() {
 
     // Name selector change
     nameSelector.addEventListener('change', handleNameSelection);
+
+    // Recurring Product Checkbox
+    const isRecurringCheckbox = document.getElementById('is-recurring');
+    const minThresholdGroup = document.getElementById('min-threshold-group');
+    if (isRecurringCheckbox) {
+        isRecurringCheckbox.addEventListener('change', () => {
+            minThresholdGroup.style.display = isRecurringCheckbox.checked ? 'block' : 'none';
+        });
+    }
+
+    // Recurring Search
+    const recurringSearchInput = document.getElementById('recurring-search-input');
+    if (recurringSearchInput) {
+        recurringSearchInput.addEventListener('input', () => renderRecurringProducts());
+    }
 }
 
 // Load Products from Supabase
@@ -90,6 +105,7 @@ export async function loadProducts() {
 
         setProducts(productsWithInventory);
         renderProducts();
+        renderRecurringProducts(); // Initial render for recurring tab
 
         // AGGIORNA ANCHE LE LOCAZIONI per il conteggio
         renderLocations();
@@ -148,6 +164,13 @@ export function renderProducts(filteredProducts = null) {
                             </span>
                         </div>
                     ` : ''}
+                    ${product.is_recurring ? `
+                        <div class="info-row" style="margin-top: 5px;">
+                            <span class="expiry-badge ${totalQuantity < product.min_threshold ? 'expiry-expired' : 'expiry-ok'}">
+                                🔄 Ricorrente (Min: ${product.min_threshold})
+                            </span>
+                        </div>
+                    ` : ''}
                 </div>
 
                 <div class="product-actions">
@@ -155,6 +178,84 @@ export function renderProducts(filteredProducts = null) {
                     <button class="btn btn-danger btn-small" onclick="deleteProduct('${product.id}')">Elimina Tutto</button>
                 </div>
             </div>
+        `;
+    }).join('');
+}
+
+// Render Recurring Products List
+export function renderRecurringProducts() {
+    const tableBody = document.getElementById('recurring-table-body');
+    const searchInput = document.getElementById('recurring-search-input');
+    
+    if (!tableBody) return;
+
+    let recurringProducts = getProducts().filter(p => p.is_recurring);
+
+    // Apply search filter
+    if (searchInput && searchInput.value) {
+        const term = searchInput.value.toLowerCase();
+        recurringProducts = recurringProducts.filter(p => 
+            p.name.toLowerCase().includes(term) || 
+            (p.ean && p.ean.includes(term))
+        );
+    }
+    
+    // Sort: Low stock first
+    recurringProducts.sort((a, b) => {
+        const qtyA = a.inventory.reduce((sum, i) => sum + i.quantity, 0);
+        const qtyB = b.inventory.reduce((sum, i) => sum + i.quantity, 0);
+        
+        // Prioritize items with 0 stock
+        if (qtyA === 0 && qtyB > 0) return -1;
+        if (qtyB === 0 && qtyA > 0) return 1;
+        
+        // Then prioritize items below threshold
+        const gapA = qtyA - a.min_threshold;
+        const gapB = qtyB - b.min_threshold;
+        
+        return gapA - gapB;
+    });
+
+    if (recurringProducts.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 20px;">
+                    ${searchInput && searchInput.value ? 'Nessun prodotto trovato' : 'Nessun prodotto ricorrente configurato'}
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tableBody.innerHTML = recurringProducts.map(product => {
+        const currentQty = product.inventory.reduce((sum, item) => sum + item.quantity, 0);
+        const minThreshold = product.min_threshold || 0;
+        
+        let statusClass = 'expiry-ok';
+        let statusText = 'OK';
+        
+        if (currentQty === 0) {
+            statusClass = 'expiry-expired';
+            statusText = 'MANCANTE';
+        } else if (currentQty < minThreshold) {
+            statusClass = 'expiry-warning';
+            statusText = 'AL DI SOTTO';
+        }
+
+        return `
+            <tr class="expiry-row ${currentQty === 0 ? 'row-expired' : (currentQty < minThreshold ? 'row-warning' : '')}">
+                <td>
+                    <strong>${escapeHtml(product.name)}</strong>
+                    ${product.category ? `<br><small>${escapeHtml(product.category.name)}</small>` : ''}
+                </td>
+                <td>${minThreshold}</td>
+                <td><strong>${currentQty}</strong></td>
+                <td><span class="expiry-badge ${statusClass}">${statusText}</span></td>
+                <td>
+                    <button class="btn btn-primary btn-small" onclick="showProductInventoryModal('${product.id}')">Gestisci</button>
+                     <button class="btn btn-secondary btn-small" onclick="editProductInventory('${product.id}', '${product.inventory[0]?.id || ''}')">Modifica</button>
+                </td>
+            </tr>
         `;
     }).join('');
 }
@@ -236,9 +337,18 @@ async function handleAddProduct(e) {
     const locationId = productLocationSelect.value;
     const quantity = parseInt(quantityInput.value);
     const expiryDate = expiryDateInput.value || null;
+    
+    // Recuring Product Fields
+    const isRecurring = document.getElementById('is-recurring').checked;
+    const minThreshold = isRecurring ? parseInt(document.getElementById('min-threshold').value) : 0;
 
     if (!name || !categoryId || !locationId || !quantity) {
         alert('Compila tutti i campi obbligatori');
+        return;
+    }
+    
+    if (isRecurring && (!minThreshold || minThreshold < 0)) {
+        alert('Se l\'articolo è ricorrente, devi specificare una soglia minima valida.');
         return;
     }
 
@@ -252,6 +362,7 @@ async function handleAddProduct(e) {
     console.log('originalName da data-attribute:', originalNameFromData);
     console.log('customName da data-attribute:', customNameFromData);
     console.log('EAN:', ean);
+    console.log('Recurring:', isRecurring, 'Threshold:', minThreshold);
 
     try {
         showLoading();
@@ -263,7 +374,9 @@ async function handleAddProduct(e) {
                 .update({
                     ean: ean || null,
                     name: name,
-                    category_id: categoryId
+                    category_id: categoryId,
+                    is_recurring: isRecurring,
+                    min_threshold: minThreshold
                 })
                 .eq('id', editingProductId);
 
@@ -282,7 +395,7 @@ async function handleAddProduct(e) {
                     .eq('id', editingInventoryId);
 
                 if (inventoryError) throw inventoryError;
-                alert('Lotto aggiornato con successo!');
+                alert('Prodotto e lotto aggiornati con successo!');
             } else {
                 // Fallback (non dovrebbe accadere con la UI attuale, ma per sicurezza):
                 // Se stiamo modificando il prodotto ma senza un ID inventory specifico
@@ -297,7 +410,7 @@ async function handleAddProduct(e) {
                     }]);
 
                 if (inventoryError) throw inventoryError;
-                alert('Nuovo lotto aggiunto al prodotto!');
+                alert('Prodotto aggiornato e nuovo lotto aggiunto!');
             }
 
             editingProductId = null;
@@ -341,17 +454,21 @@ async function handleAddProduct(e) {
 
                 // NUOVO: Aggiorna i nomi se necessario
                 // Se abbiamo un original_name dall'API e il nome è stato modificato
+                // E aggiorna anche lo stato ricorrente
+                
+                const updates = { is_recurring: isRecurring, min_threshold: minThreshold };
+                
                 if (originalNameFromData && name !== originalNameFromData) {
-                    // L'utente ha modificato il nome, aggiorna custom_name
-                    await supabaseClient
-                        .from('products')
-                        .update({
-                            original_name: originalNameFromData,
-                            custom_name: name,
-                            name: name
-                        })
-                        .eq('id', existingProduct.id);
+                    updates.original_name = originalNameFromData;
+                    updates.custom_name = name;
+                    updates.name = name;
                 }
+                
+                await supabaseClient
+                    .from('products')
+                    .update(updates)
+                    .eq('id', existingProduct.id);
+                    
             } else {
                 // Crea nuovo prodotto
                 // Determina original_name e custom_name
@@ -385,7 +502,9 @@ async function handleAddProduct(e) {
                         name: name,
                         category_id: categoryId,
                         original_name: originalName,
-                        custom_name: customName
+                        custom_name: customName,
+                        is_recurring: isRecurring,
+                        min_threshold: minThreshold
                     }])
                     .select();
 
@@ -432,6 +551,10 @@ async function handleAddProduct(e) {
         // Reset data attributes
         productNameInput.dataset.originalName = '';
         productNameInput.dataset.customName = '';
+        // Reset recurring fields
+        document.getElementById('is-recurring').checked = false;
+        document.getElementById('min-threshold-group').style.display = 'none';
+        
         await loadProducts();
         switchTab('products');
         hideLoading();
@@ -447,21 +570,45 @@ async function handleAddProduct(e) {
 // Modifica un inventory specifico
 export function editProductInventory(productId, inventoryId) {
     const product = getProducts().find(p => p.id === productId);
-    const inventory = product?.inventory.find(inv => inv.id === inventoryId);
-    if (!product || !inventory) return;
+    // Nota: inventoryId potrebbe essere vuoto se chiamato dalla tabella recurring per un prodotto con 0 quantità
+    const inventory = inventoryId ? product?.inventory.find(inv => inv.id === inventoryId) : null;
+    
+    if (!product) return;
 
     editingProductId = productId;
-    editingInventoryId = inventoryId; // Imposta l'ID del lotto da modificare
-    document.querySelector('#add-tab h2').textContent = 'Modifica Lotto';
+    editingInventoryId = inventoryId || null; // Imposta null se stiamo creando un nuovo lotto (o modificando solo il prodotto)
+    document.querySelector('#add-tab h2').textContent = inventory ? 'Modifica Lotto' : 'Modifica Prodotto';
 
     eanInput.value = product.ean || '';
     productNameInput.value = product.name;
     productCategorySelect.value = product.category_id;
-    productLocationSelect.value = inventory.location_id;
-    quantityInput.value = inventory.quantity;
-    expiryDateInput.value = inventory.expiry_date || '';
+    
+    // Recurring fields
+    const isRecurringCheckbox = document.getElementById('is-recurring');
+    const minThresholdGroup = document.getElementById('min-threshold-group');
+    const minThresholdInput = document.getElementById('min-threshold');
+    
+    isRecurringCheckbox.checked = product.is_recurring || false;
+    minThresholdInput.value = product.min_threshold || 1;
+    minThresholdGroup.style.display = isRecurringCheckbox.checked ? 'block' : 'none';
 
-    document.getElementById('inventory-modal').remove();
+    if (inventory) {
+        productLocationSelect.value = inventory.location_id;
+        quantityInput.value = inventory.quantity;
+        expiryDateInput.value = inventory.expiry_date || '';
+    } else {
+        // Valori di default se stiamo modificando un prodotto senza inventory o con inventory vuoto
+        quantityInput.value = 1;
+        expiryDateInput.value = '';
+        // Se possibile, seleziona la prima location disponibile
+        if (productLocationSelect.options.length > 1) {
+            productLocationSelect.selectedIndex = 1;
+        }
+    }
+
+    const inventoryModal = document.getElementById('inventory-modal');
+    if (inventoryModal) inventoryModal.remove();
+    
     switchTab('add');
 }
 
