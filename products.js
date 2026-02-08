@@ -359,6 +359,12 @@ async function handleAddProduct(e) {
         return;
     }
 
+    // NUOVO: Un prodotto NON ricorrente non può essere creato con quantità 0
+    if (!editingProductId && !isRecurring && quantity === 0) {
+        alert('Non puoi creare un prodotto non ricorrente con quantità 0.\nSe vuoi creare un prodotto che può andare a zero, seleziona "Articolo Ricorrente".');
+        return;
+    }
+
     // Leggi i nomi da data-attributes (più affidabile delle variabili globali)
     const originalNameFromData = productNameInput.dataset.originalName || '';
     const customNameFromData = productNameInput.dataset.customName || '';
