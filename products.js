@@ -400,7 +400,25 @@ async function handleAddProduct(e) {
                         .eq('id', editingInventoryId);
 
                     if (deleteError) throw deleteError;
-                    alert('Lotto esaurito ed eliminato. Il prodotto è stato aggiornato.');
+
+                    // Verifica se rimangono altri lotti per questo prodotto
+                    const { data: remainingInventory } = await supabaseClient
+                        .from('inventory')
+                        .select('id')
+                        .eq('product_id', editingProductId);
+
+                    // Se non ci sono più lotti E il prodotto NON è ricorrente, elimina il prodotto
+                    if ((!remainingInventory || remainingInventory.length === 0) && !isRecurring) {
+                        const { error: productDeleteError } = await supabaseClient
+                            .from('products')
+                            .delete()
+                            .eq('id', editingProductId);
+
+                        if (productDeleteError) throw productDeleteError;
+                        alert('Lotto eliminato. Il prodotto non ricorrente è stato rimosso completamente.');
+                    } else {
+                        alert('Lotto esaurito ed eliminato. Il prodotto è stato aggiornato.');
+                    }
                 } else {
                     // Altrimenti AGGIORNA
                     const { error: inventoryError } = await supabaseClient
