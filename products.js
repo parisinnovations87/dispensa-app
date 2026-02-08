@@ -174,6 +174,7 @@ export function renderProducts(filteredProducts = null) {
                 </div>
 
                 <div class="product-actions">
+                    <button class="btn btn-secondary btn-small" onclick="editProduct('${product.id}')">Modifica Prodotto</button>
                     <button class="btn btn-primary btn-small" onclick="showProductInventoryModal('${product.id}')">Dettagli Inventario</button>
                     <button class="btn btn-danger btn-small" onclick="deleteProduct('${product.id}')">Elimina Tutto</button>
                 </div>
@@ -342,13 +343,19 @@ async function handleAddProduct(e) {
     const isRecurring = document.getElementById('is-recurring').checked;
     const minThreshold = isRecurring ? parseInt(document.getElementById('min-threshold').value) : 0;
 
-    if (!name || !categoryId || !locationId || !quantity) {
+    // Validazione: accetta anche 0 come valore valido
+    if (!name || !categoryId || !locationId) {
         alert('Compila tutti i campi obbligatori');
         return;
     }
 
-    if (isRecurring && (!minThreshold || minThreshold < 0)) {
-        alert('Se l\'articolo è ricorrente, devi specificare una soglia minima valida.');
+    if (isNaN(quantity) || quantity < 0) {
+        alert('La quantità deve essere un numero valido (0 o maggiore)');
+        return;
+    }
+
+    if (isRecurring && (isNaN(minThreshold) || minThreshold < 0)) {
+        alert('Se l\'articolo è ricorrente, devi specificare una soglia minima valida (0 o maggiore).');
         return;
     }
 
@@ -629,6 +636,45 @@ export function editProductInventory(productId, inventoryId) {
 
     switchTab('add');
 }
+
+// Modifica un prodotto (metadati: nome, categoria, ricorrente, soglia)
+export function editProduct(productId) {
+    const product = getProducts().find(p => p.id === productId);
+    if (!product) return;
+
+    editingProductId = productId;
+    editingInventoryId = null; // Non stiamo modificando un lotto specifico
+    document.querySelector('#add-tab h2').textContent = 'Modifica Prodotto';
+
+    // Popola i campi del prodotto
+    eanInput.value = product.ean || '';
+    productNameInput.value = product.name;
+    productCategorySelect.value = product.category_id;
+
+    // Recurring fields
+    const isRecurringCheckbox = document.getElementById('is-recurring');
+    const minThresholdGroup = document.getElementById('min-threshold-group');
+    const minThresholdInput = document.getElementById('min-threshold');
+
+    isRecurringCheckbox.checked = product.is_recurring || false;
+    minThresholdInput.value = product.min_threshold || 1;
+    minThresholdGroup.style.display = isRecurringCheckbox.checked ? 'block' : 'none';
+
+    // Per la modifica del prodotto senza specificare inventory, mettiamo valori di default
+    // L'utente può aggiungere un nuovo lotto se vuole, oppure semplicemente salvare le modifiche al prodotto
+    quantityInput.value = 0; // Default a 0 (non aggiungerà inventory)
+    expiryDateInput.value = '';
+
+    // Seleziona la prima location disponibile come placeholder
+    if (productLocationSelect.options.length > 1) {
+        productLocationSelect.selectedIndex = 1;
+    }
+
+    switchTab('add');
+}
+
+// Expose globally
+window.editProduct = editProduct;
 
 // Sposta un inventory specifico
 export function moveProductInventory(productId, inventoryId) {
