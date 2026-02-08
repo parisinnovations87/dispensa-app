@@ -186,7 +186,7 @@ export function renderProducts(filteredProducts = null) {
 export function renderRecurringProducts() {
     const tableBody = document.getElementById('recurring-table-body');
     const searchInput = document.getElementById('recurring-search-input');
-    
+
     if (!tableBody) return;
 
     let recurringProducts = getProducts().filter(p => p.is_recurring);
@@ -194,25 +194,25 @@ export function renderRecurringProducts() {
     // Apply search filter
     if (searchInput && searchInput.value) {
         const term = searchInput.value.toLowerCase();
-        recurringProducts = recurringProducts.filter(p => 
-            p.name.toLowerCase().includes(term) || 
+        recurringProducts = recurringProducts.filter(p =>
+            p.name.toLowerCase().includes(term) ||
             (p.ean && p.ean.includes(term))
         );
     }
-    
+
     // Sort: Low stock first
     recurringProducts.sort((a, b) => {
         const qtyA = a.inventory.reduce((sum, i) => sum + i.quantity, 0);
         const qtyB = b.inventory.reduce((sum, i) => sum + i.quantity, 0);
-        
+
         // Prioritize items with 0 stock
         if (qtyA === 0 && qtyB > 0) return -1;
         if (qtyB === 0 && qtyA > 0) return 1;
-        
+
         // Then prioritize items below threshold
         const gapA = qtyA - a.min_threshold;
         const gapB = qtyB - b.min_threshold;
-        
+
         return gapA - gapB;
     });
 
@@ -230,10 +230,10 @@ export function renderRecurringProducts() {
     tableBody.innerHTML = recurringProducts.map(product => {
         const currentQty = product.inventory.reduce((sum, item) => sum + item.quantity, 0);
         const minThreshold = product.min_threshold || 0;
-        
+
         let statusClass = 'expiry-ok';
         let statusText = 'OK';
-        
+
         if (currentQty === 0) {
             statusClass = 'expiry-expired';
             statusText = 'MANCANTE';
@@ -337,7 +337,7 @@ async function handleAddProduct(e) {
     const locationId = productLocationSelect.value;
     const quantity = parseInt(quantityInput.value);
     const expiryDate = expiryDateInput.value || null;
-    
+
     // Recuring Product Fields
     const isRecurring = document.getElementById('is-recurring').checked;
     const minThreshold = isRecurring ? parseInt(document.getElementById('min-threshold').value) : 0;
@@ -346,7 +346,7 @@ async function handleAddProduct(e) {
         alert('Compila tutti i campi obbligatori');
         return;
     }
-    
+
     if (isRecurring && (!minThreshold || minThreshold < 0)) {
         alert('Se l\'articolo è ricorrente, devi specificare una soglia minima valida.');
         return;
@@ -384,33 +384,47 @@ async function handleAddProduct(e) {
 
             // FIX: GESTIONE MODIFICA INVENTARIO
             if (editingInventoryId) {
-                // Stiamo modificando un lotto specifico -> Aggiorna SOLO quello
-                const { error: inventoryError } = await supabaseClient
-                    .from('inventory')
-                    .update({
-                        quantity: quantity,
-                        expiry_date: expiryDate,
-                        location_id: locationId
-                    })
-                    .eq('id', editingInventoryId);
+                // Stiamo modificando un lotto specifico
+                if (quantity === 0) {
+                    // Se la quantità è 0, ELIMINA il lotto
+                    const { error: deleteError } = await supabaseClient
+                        .from('inventory')
+                        .delete()
+                        .eq('id', editingInventoryId);
 
-                if (inventoryError) throw inventoryError;
-                alert('Prodotto e lotto aggiornati con successo!');
+                    if (deleteError) throw deleteError;
+                    alert('Lotto esaurito ed eliminato. Il prodotto è stato aggiornato.');
+                } else {
+                    // Altrimenti AGGIORNA
+                    const { error: inventoryError } = await supabaseClient
+                        .from('inventory')
+                        .update({
+                            quantity: quantity,
+                            expiry_date: expiryDate,
+                            location_id: locationId
+                        })
+                        .eq('id', editingInventoryId);
+
+                    if (inventoryError) throw inventoryError;
+                    alert('Lotto aggiornato con successo!');
+                }
             } else {
-                // Fallback (non dovrebbe accadere con la UI attuale, ma per sicurezza):
-                // Se stiamo modificando il prodotto ma senza un ID inventory specifico
-                // Aggiungiamo un nuovo lotto invece di cancellare tutto.
-                const { error: inventoryError } = await supabaseClient
-                    .from('inventory')
-                    .insert([{
-                        product_id: editingProductId,
-                        quantity: quantity,
-                        expiry_date: expiryDate,
-                        location_id: locationId
-                    }]);
+                // Fallback / Aggiunta nuovo lotto
+                if (quantity > 0) {
+                    const { error: inventoryError } = await supabaseClient
+                        .from('inventory')
+                        .insert([{
+                            product_id: editingProductId,
+                            quantity: quantity,
+                            expiry_date: expiryDate,
+                            location_id: locationId
+                        }]);
 
-                if (inventoryError) throw inventoryError;
-                alert('Prodotto aggiornato e nuovo lotto aggiunto!');
+                    if (inventoryError) throw inventoryError;
+                    alert('Prodotto aggiornato e nuovo lotto aggiunto!');
+                } else {
+                    alert('Prodotto aggiornato. Nessun lotto aggiunto (quantità 0).');
+                }
             }
 
             editingProductId = null;
@@ -455,20 +469,20 @@ async function handleAddProduct(e) {
                 // NUOVO: Aggiorna i nomi se necessario
                 // Se abbiamo un original_name dall'API e il nome è stato modificato
                 // E aggiorna anche lo stato ricorrente
-                
+
                 const updates = { is_recurring: isRecurring, min_threshold: minThreshold };
-                
+
                 if (originalNameFromData && name !== originalNameFromData) {
                     updates.original_name = originalNameFromData;
                     updates.custom_name = name;
                     updates.name = name;
                 }
-                
+
                 await supabaseClient
                     .from('products')
                     .update(updates)
                     .eq('id', existingProduct.id);
-                    
+
             } else {
                 // Crea nuovo prodotto
                 // Determina original_name e custom_name
@@ -513,36 +527,40 @@ async function handleAddProduct(e) {
             }
 
             // Controlla se esiste già inventory con stessa locazione e scadenza
-            const { data: existingInv } = await supabaseClient
-                .from('inventory')
-                .select('id, quantity')
-                .eq('product_id', productId)
-                .eq('location_id', locationId)
-                .eq('expiry_date', expiryDate || null)
-                .single();
-
-            if (existingInv) {
-                // Somma alla quantità esistente
-                const { error: updateError } = await supabaseClient
+            if (quantity > 0) {
+                const { data: existingInv } = await supabaseClient
                     .from('inventory')
-                    .update({ quantity: existingInv.quantity + quantity })
-                    .eq('id', existingInv.id);
+                    .select('id, quantity')
+                    .eq('product_id', productId)
+                    .eq('location_id', locationId)
+                    .eq('expiry_date', expiryDate || null)
+                    .single();
 
-                if (updateError) throw updateError;
-                alert('Quantità aggiunta al lotto esistente!');
+                if (existingInv) {
+                    // Somma alla quantità esistente
+                    const { error: updateError } = await supabaseClient
+                        .from('inventory')
+                        .update({ quantity: existingInv.quantity + quantity })
+                        .eq('id', existingInv.id);
+
+                    if (updateError) throw updateError;
+                    alert('Quantità aggiunta al lotto esistente!');
+                } else {
+                    // Crea nuovo inventory
+                    const { error: inventoryError } = await supabaseClient
+                        .from('inventory')
+                        .insert([{
+                            product_id: productId,
+                            quantity: quantity,
+                            expiry_date: expiryDate,
+                            location_id: locationId
+                        }]);
+
+                    if (inventoryError) throw inventoryError;
+                    alert('Prodotto aggiunto con successo!');
+                }
             } else {
-                // Crea nuovo inventory
-                const { error: inventoryError } = await supabaseClient
-                    .from('inventory')
-                    .insert([{
-                        product_id: productId,
-                        quantity: quantity,
-                        expiry_date: expiryDate,
-                        location_id: locationId
-                    }]);
-
-                if (inventoryError) throw inventoryError;
-                alert('Prodotto aggiunto con successo!');
+                alert('Prodotto creato con quantità 0 (nessun lotto aggiunto).');
             }
         }
 
@@ -554,7 +572,7 @@ async function handleAddProduct(e) {
         // Reset recurring fields
         document.getElementById('is-recurring').checked = false;
         document.getElementById('min-threshold-group').style.display = 'none';
-        
+
         await loadProducts();
         switchTab('products');
         hideLoading();
@@ -572,7 +590,7 @@ export function editProductInventory(productId, inventoryId) {
     const product = getProducts().find(p => p.id === productId);
     // Nota: inventoryId potrebbe essere vuoto se chiamato dalla tabella recurring per un prodotto con 0 quantità
     const inventory = inventoryId ? product?.inventory.find(inv => inv.id === inventoryId) : null;
-    
+
     if (!product) return;
 
     editingProductId = productId;
@@ -582,12 +600,12 @@ export function editProductInventory(productId, inventoryId) {
     eanInput.value = product.ean || '';
     productNameInput.value = product.name;
     productCategorySelect.value = product.category_id;
-    
+
     // Recurring fields
     const isRecurringCheckbox = document.getElementById('is-recurring');
     const minThresholdGroup = document.getElementById('min-threshold-group');
     const minThresholdInput = document.getElementById('min-threshold');
-    
+
     isRecurringCheckbox.checked = product.is_recurring || false;
     minThresholdInput.value = product.min_threshold || 1;
     minThresholdGroup.style.display = isRecurringCheckbox.checked ? 'block' : 'none';
@@ -608,7 +626,7 @@ export function editProductInventory(productId, inventoryId) {
 
     const inventoryModal = document.getElementById('inventory-modal');
     if (inventoryModal) inventoryModal.remove();
-    
+
     switchTab('add');
 }
 
@@ -743,6 +761,37 @@ window.deleteInventory = deleteInventory;
 
 // Delete Product
 export async function deleteProduct(productId) {
+    const product = getProducts().find(p => p.id === productId);
+    if (!product) return;
+
+    // PROTECTION FOR RECURRING PRODUCTS
+    if (product.is_recurring) {
+        if (!confirm(`Questo è un prodotto RICORRENTE.\nVuoi azzerare le quantità in dispensa?\n(Il prodotto rimarrà nella lista dei ricorrenti)`)) {
+            return;
+        }
+
+        try {
+            showLoading();
+            // Delete only inventory
+            const { error } = await supabaseClient
+                .from('inventory')
+                .delete()
+                .eq('product_id', productId);
+
+            if (error) throw error;
+
+            await loadProducts();
+            hideLoading();
+            alert('Quantità azzerate. Il prodotto è ancora nella lista Ricorrenti.');
+        } catch (error) {
+            console.error('Errore azzeramento prodotto ricorrente:', error);
+            alert('Errore: ' + error.message);
+            hideLoading();
+        }
+        return;
+    }
+
+    // STANDARD DELETION
     if (!confirm('Sei sicuro di voler eliminare questo prodotto?')) return;
 
     try {
